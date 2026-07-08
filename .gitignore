@@ -1,0 +1,28 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Python virtual environment / toolchain
+.venv/
+__pycache__/
+*.py[cod]
+
+# Editor / IDE
+.claude/
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Machine-specific
+device.txt
+
+# Build artifacts
+*.o
+*.elf
+build/
+firmware/
