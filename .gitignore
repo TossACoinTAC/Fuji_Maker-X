@@ -8,11 +8,13 @@
 __pycache__/
 *.py[cod]
 
-# Editor / IDE
-.claude/
+# Editor / IDE / Agent
 .vscode/
 .idea/
 *.swp
+.claude/
+AGENT.md
+CLAUDE.md
 
 # OS
 .DS_Store
