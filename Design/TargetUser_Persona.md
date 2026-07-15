@@ -19,7 +19,7 @@ This is a beachhead user, not a claim that Fuji is only for anime fans. The firs
 | Age / life stage     | 18-30; university student, early-career worker, or graduate student                                                                                                 |
 | Living pattern       | Urban or university environment; regularly moves between home, campus/work, shops, cafes, and transit                                                               |
 | Interests            | Anime, games, illustration, cosplay, character goods, themed cafes, online fandom, and sharing finds with a small trusted circle                                    |
-| Device habits        | Smartphone-first; comfortable with messaging and selective voice use, but dislikes speaking loudly in public or spending energy navigating a screen for a tiny task |
+| Device habits        | Smartphone-first; often uses Bluetooth earphones outside, prefers private audio, and dislikes speaking loudly or spending energy navigating a screen for a tiny task |
 | Spending pattern     | Will spend on character goods and small accessories when the object feels distinctive, durable, and emotionally worthwhile                                          |
 | Technical confidence | Can pair devices and enable a phone hotspot, but does not want to debug firmware, configure APIs, or manage a complicated smart-home setup                          |
 | Social context       | Often alone or with one or two trusted friends; enjoys quiet personal rituals and may be hesitant to perform for a larger group                                     |
@@ -38,6 +38,7 @@ The important value is a complete low-pressure moment: Fuji reduces friction and
 | A fast answer to a low-stakes decision    | Too many options, low mental energy, and the effort of stopping to search or message someone       | Use short voice turns, a small number of options, and a visible/voice confirmation step                               |
 | A companion that feels personal           | Most assistants are functional but emotionally flat; plushies are warm but inert                   | Give Fuji a consistent character, expressive face, touch response, and memory that is transparent and editable        |
 | Help while moving                         | Looking down at a phone is inconvenient and sometimes unsafe                                       | Keep interaction hands-free; use the phone only as a quiet gateway for maps, network, and permissions                 |
+| Private help outside                      | Speaking to a cute device in public can feel exposing, while music and assistant audio compete for the same earphones | Route Fuji's responses through the phone's already-connected earphones, with clear duck/pause and fallback rules |
 | A wearable object that survives real life | A shoulder-mounted object can fall, snag clothing, attract unwanted attention, or run out of power | Engineer magnet retention, one-handed removal, privacy feedback, weather tolerance, and a predictable battery routine |
 | Trustworthy recommendations               | Generic recommendations ignore taste, budget, distance, or the preferences of a small group        | Ask only the missing constraint, explain why an option fits, and let the user correct the preference                  |
 
@@ -70,8 +71,9 @@ When I have a small decision, a low-energy moment, or a need for gentle company,
 2. **Start and narrate a route.** With explicit confirmation, hand the destination to the phone's map app and give brief turn or progress prompts through the device.
 3. **Handle small language gaps.** Translate a short spoken phrase or sign and repeat it at a useful pace; make it clear when the result is uncertain.
 4. **Remember a lightweight commitment.** Create, read, and remind about a simple event or task, with the time and wording repeated for confirmation.
-5. **Respond to the user's presence.** React to voice, touch, and orientation with expressions or small actions that make the object feel alive without consuming attention.
-6. **Recover gracefully.** When Wi-Fi, permissions, speech recognition, or a map handoff fails, explain the limitation and offer a usable fallback rather than pretending success.
+5. **Use private audio when wanted.** Send Fuji's response to the phone's connected earphones and coordinate with the active music player so the user can hear without broadcasting the interaction.
+6. **Respond to the user's presence.** React to voice, touch, and orientation with expressions or small actions that make the object feel alive without consuming attention.
+7. **Recover gracefully.** When Wi-Fi, Bluetooth, permissions, speech recognition, or a map handoff fails, explain the limitation and offer a usable fallback rather than pretending success.
 
 ### Emotional jobs
 
@@ -129,6 +131,7 @@ Paid add-ons can come later (character skins, accessories, or optional cloud fea
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | "It is cute, but I will stop using it."    | Novelty products are easy to admire and abandon                                                   | Anchor the character in two repeatable utilities; measure week-two and week-four retention                                                                    |
 | Phone hotspot and pairing friction         | Network setup can defeat the promise of instant conversation                                      | Provide a one-time pairing flow, clear connection state, and a graceful offline personality mode                                                              |
+| Earphone and music routing friction       | Fuji, the phone, and a music player may compete for Bluetooth and audio focus                    | Keep the phone as the Bluetooth hub; show the active output route, duck/pause music explicitly, and fall back to face/haptic feedback                         |
 | Battery anxiety                            | A wearable that dies during a day is worse than a keychain                                        | Publish a realistic battery target, low-power idle behavior, battery warning, and simple charging dock/cable                                                  |
 | Public embarrassment or unwanted attention | Voice interaction and cute sounds may feel too conspicuous                                        | Offer quiet mode, adjustable volume, haptic/face-only acknowledgements, and a discrete wake gesture                                                           |
 | Privacy and accidental listening           | A shoulder companion is physically close to private conversations                                 | Visible listening indicator, hardware mute, local wake-word explanation, recording retention controls, and explicit confirmation before external actions      |
@@ -185,6 +188,7 @@ Ask for the behaviour, not a compliment. A "yes" only counts when the user names
 
 - The target user wants an expressive but controllable companion that works at home, while commuting, and discreetly in public.
 - A phone hotspot is acceptable when setup is simple and the device clearly shows connection state.
+- A phone can keep Fuji connected over BLE while routing Fuji audio and music through the phone's connected earphones; exact Android/iOS and earphone-model behavior must be tested.
 - Food choice is frequent enough to become a habit, whether the user is alone or with a small trusted group, and broad enough to demonstrate recommendation quality.
 - A small amount of memory improves usefulness without feeling invasive.
 - Voice is useful when the user's hands or attention are occupied, while touch, text, and face-only feedback are essential fallback modes for low-energy or public moments.

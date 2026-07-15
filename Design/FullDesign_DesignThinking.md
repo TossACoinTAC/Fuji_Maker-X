@@ -27,6 +27,28 @@ The repository currently contains an Arduino entry point for the ESP32-S3 and a 
 - **Prototype scope:** what can be tested with a phone, a speaker, a printed shell, or mocked services;
 - **Implementation scope:** what should eventually be layered into the ESP32-S3 firmware and the phone bridge.
 
+### Bluetooth feasibility and recommended topology
+
+Yes, Fuji can support a phone connection and private earphone use at the same time, but the recommended design has the **phone as the Bluetooth hub**:
+
+```text
+Fuji -- BLE control and status --> phone -- phone audio stack --> Bluetooth earphones
+                                      |
+                                      +--> music player and media controls
+```
+
+In this topology, the phone keeps a BLE link to Fuji while it routes audio to the earphones using its normal Bluetooth audio support. Fuji sends requests, control/status updates, and playback commands to the phone; the phone bridge produces or receives the response content and the phone's audio session decides whether to pause or duck music, play Fuji privately, and restore music afterward. The phone app must show whether the earphone route is actually active.
+
+This is different from making Fuji connect directly to both the phone and the earphones. Multiple BLE control connections can be possible with the ESP32-S3 stack, but a BLE GATT link is not an earphone audio link. Ordinary earphones generally expect a Bluetooth Classic A2DP source, while the current ESP32-S3/XiaoZhi platform should be treated as a BLE control endpoint until a supported audio profile is proven. Some newer earphones support LE Audio, but that still requires a compatible controller, stack, and product-level validation.
+
+Therefore:
+
+- **Supported design target:** Fuji to phone over BLE; phone to earphones over the phone's Bluetooth stack; phone to music player through supported platform media APIs.
+- **Not a P0 promise:** Fuji directly streaming audio to earphones while also maintaining a phone link.
+- **If direct audio becomes essential:** choose a hardware and software platform with a verified Bluetooth Classic A2DP or LE Audio source implementation, or add a dedicated audio bridge.
+
+The exact simultaneous behavior must be tested on the first supported Android/iOS version and representative earphone models. Pairing, audio focus, microphone routing, reconnection, and background restrictions vary by phone and earphone.
+
 ---
 
 ## 1. Empathize
@@ -44,6 +66,7 @@ Design Thinking starts with observed behaviour rather than the attractive object
 | A phone hotspot is acceptable if setup is simple | The hardware is not intended to carry a full independent connection | Measure setup completion, reconnection, and user frustration |
 | Small, editable memory improves recommendations | Preference history should create continuity without feeling invasive | Test explicit memory prompts and deletion controls |
 | Public volume and attention are a concern | A loud mascot will make the object embarrassing | Offer quiet, haptic, and face-only modes in early prototypes |
+| Private audio is valuable outside | The user may want Fuji's response without broadcasting it, while music is already using the phone's audio route | Test phone-to-earphone routing, music duck/pause, and a non-speaking fallback |
 
 These are hypotheses. They must not be written up as user research findings until they are tested.
 
@@ -108,6 +131,7 @@ Lin needs to feel that a small decision is easy and emotionally low-pressure, no
 8. **Character consistency over randomness.** Fuji can be playful, but the voice, words, expressions, and boundaries must feel like one character.
 9. **Design for the real body.** Magnet strength, clothing, hair, rain, heat, and one-handed removal are product requirements, not late hardware details.
 10. **Build the smallest lovable loop first.** Food choice plus navigation is the first loop. Translation, reminders, and richer actions follow evidence of repeat use.
+11. **Treat the phone as the media hub.** Use Fuji's BLE link for control and state; route private speech and music through the phone unless direct audio support is verified separately.
 
 ### 2.4 Product scope
 
@@ -121,6 +145,7 @@ Lin needs to feel that a small decision is easy and emotionally low-pressure, no
 - spoken recommendation of two or three nearby options;
 - explicit confirmation and a phone-side map handoff;
 - short route prompts while a route is active, with the phone remaining the source of truth;
+- a BLE phone control channel with visible output-route status; the P0 prototype must not claim direct Fuji-to-earphone audio;
 - basic offline personality responses and a clear disconnected message;
 - a shoulder/bag magnetic mount prototype with a retention test.
 
@@ -130,6 +155,8 @@ Lin needs to feel that a small decision is easy and emotionally low-pressure, no
 - simple reminders and read-back confirmation;
 - explicit preference memory and deletion;
 - quiet mode with haptic and face-only feedback;
+- private Fuji responses through the phone's connected earphones, with music duck/pause and restore behavior;
+- basic play/pause/next music commands through supported phone media APIs;
 - orientation-aware idle expressions and a gentle "welcome back" response;
 - a phone companion screen for setup, permissions, transcript visibility, and privacy controls.
 
@@ -230,6 +257,8 @@ Fuji is soft, curious, and lightly mischievous. It is not hyperactive. It can ma
 | Haptic | Quiet acknowledgement, warning, confirmation | Keep patterns short and distinguishable |
 | Orientation / motion | Idle animation, arrival, removal, fall detection | Never use motion alone for an external action |
 | Phone companion | Pairing, permissions, map UI, transcript, data controls | Should be a setup and recovery surface, not required for every exchange |
+| Earphones through phone | Private Fuji responses and route prompts | Phone must verify the earphone route; Fuji must not unexpectedly speak aloud if the route disappears |
+| Music player through phone | Play, pause, next, and restore after a Fuji response | Only supported platform media APIs; do not promise arbitrary app control |
 
 ### 4.3 State model
 
@@ -245,7 +274,7 @@ Fuji uses a small, explicit state machine. Every state has a visual/audio fallba
 | `ACTING` | Phone bridge or service call started | Progress animation | Short progress message | Cancel where supported |
 | `SUCCESS` | Action completed and verified | Smile/celebration under 1.5 s | Result and next step | Repeat, idle |
 | `ERROR` | Service, permission, or input failure | Concerned but calm | Cause plus fallback | Retry, repeat, open phone |
-| `QUIET` | User toggles quiet mode | Dim face or haptic only | No unsolicited voice | Touch or phone to exit |
+| `QUIET` | User toggles quiet mode | Dim face or haptic only | No device speaker; earphone audio only if the phone route is verified | Touch or phone to exit |
 | `MUTED` | Hardware mute | Clear muted indicator | No capture | Hardware unmute only |
 | `DISCONNECTED` | Hotspot or bridge unavailable | Offline face | Local responses only | Reconnect, phone setup |
 
@@ -256,15 +285,28 @@ Rules:
 - A timeout returns to `IDLE` or `QUIET`; it does not keep the microphone open.
 - A hardware mute overrides all software modes and cannot be undone by voice.
 
+#### Output route states
+
+The phone bridge tracks the output route independently from Fuji's interaction state:
+
+| Route | Meaning | Safe fallback |
+|---|---|---|
+| `DEVICE_SPEAKER` | Fuji may speak through its own speaker | Use only when normal volume is enabled |
+| `PHONE_EARPHONES` | The phone has verified an active earphone route | Send Fuji audio privately and use the phone's audio focus rules |
+| `FACE_HAPTIC` | No spoken output is allowed or available | Show state through face and haptic patterns |
+
+`PHONE_EARPHONES` is never assumed from a previous session. If the phone reports a disconnect or route change, Fuji falls back to `FACE_HAPTIC` or asks for permission before using the device speaker.
+
 ### 4.4 Key flow A: first-time setup
 
 1. User powers on Fuji; the face shows a short welcome animation and a pairing code.
 2. User opens the Fuji companion app or an onboarding link and selects Fuji.
 3. Fuji advertises a local setup channel over BLE or the supported XiaoZhi pairing mechanism. The phone supplies the hotspot credentials without showing them on Fuji.
 4. App explains microphone/listening state, data retention, map handoff, and hardware mute before requesting permissions.
-5. User chooses language, voice volume, quiet-mode default, and whether Fuji may remember explicit food preferences.
-6. User tests wake, cancel, touch, mute, and one sample recommendation.
-7. App reports "ready" only after a real round-trip voice test succeeds. If network setup fails, Fuji remains usable for local expressions and gives a concrete recovery step.
+5. User chooses language, voice volume, quiet-mode default, output route, and whether Fuji may remember explicit food preferences.
+6. If earphones are connected, the app tests a short private response and reports whether music was paused or ducked and restored. If no earphones are present, this test is skipped rather than treated as a failure.
+7. User tests wake, cancel, touch, mute, and one sample recommendation.
+8. App reports "ready" only after a real round-trip voice test succeeds. If network setup fails, Fuji remains usable for local expressions and gives a concrete recovery step.
 
 **Acceptance criteria:** a first-time user can complete setup without developer help; the app never displays a success state before Fuji can hear and respond; a failed hotspot leaves no confusing half-paired device.
 
@@ -284,7 +326,21 @@ Rules:
 
 **Failure cases:** no location permission, no nearby result, stale opening data, map app missing, bridge disconnected, or disagreement with a close friend. Each case gives a fallback such as repeating the address, offering a random choice from the returned list, or asking the user to open the phone.
 
-### 4.6 Key flow C: translation
+### 4.6 Key flow C: silent outside with earphones and music
+
+1. The user pairs Fuji to the phone through BLE. The user pairs earphones to the phone using the phone's normal Bluetooth settings; there is no direct Fuji-to-earphone pairing in this flow.
+2. The Fuji app shows two independent statuses: `Fuji connected` and `Earphones connected`. A phone-to-earphone audio route is not reported as ready until the operating system confirms it.
+3. The user selects private audio and chooses how music should behave: pause during Fuji speech, duck volume, or leave music playing only when the response is face/haptic-only.
+4. While outside, the user asks Fuji for a recommendation, translation, reminder, or route prompt. Fuji sends the intent over BLE; the phone bridge handles the service and routes the response to the earphones.
+5. Before speaking, the phone app requests audio focus or uses the supported media-control mechanism. It pauses or ducks the active music player only according to the user's setting, then restores it after the response.
+6. Fuji gives a face/haptic acknowledgement so the user can tell that a private response is being delivered. Playback commands such as play, pause, and next are sent through supported phone media APIs, not directly to an arbitrary music application.
+7. If the earphones disconnect, Fuji does not suddenly speak sensitive content through its own speaker. It uses `FACE_HAPTIC`, asks the user to reconnect, or waits for an explicit request to use the device speaker.
+
+**Acceptance criteria:** the user can tell whether Fuji and the earphones are connected; a short Fuji response is audible privately; music resumes only when expected; and a route failure never causes an unexpected public announcement.
+
+**Scope note:** phone OS audio focus, background execution, media-player permissions, and earphone multipoint behavior vary. Start with one supported phone platform and one reference earphone pair before broadening compatibility.
+
+### 4.7 Key flow D: translation
 
 1. User says, "Fuji, translate this," then speaks or plays a short phrase.
 2. Fuji identifies source and target language if possible; otherwise asks one clarification.
@@ -293,7 +349,7 @@ Rules:
 
 Translation is P1 because language detection and audio quality need dedicated testing. It should initially support short phrases rather than long simultaneous interpretation.
 
-### 4.7 Key flow D: reminder
+### 4.8 Key flow E: reminder
 
 1. User says, "Fuji, remind me to submit the form at 8 tonight."
 2. Fuji repeats the action and time: "Reminder at 8:00 PM today: submit the form. Save it?"
@@ -302,11 +358,11 @@ Translation is P1 because language detection and audio quality need dedicated te
 
 Reminders must be idempotent. A retry must not silently create duplicates.
 
-### 4.8 Key flow E: emotional check-in
+### 4.9 Key flow F: emotional check-in
 
 If the user says they are having a bad day, Fuji can acknowledge and offer a small choice: "That sounds heavy. Want quiet company, a tiny distraction, or help with one next step?" It should not diagnose, make promises, or imply that it can replace human or professional support. If the user expresses imminent danger or self-harm, Fuji should encourage contacting local emergency or crisis support and a trusted person, using the phone for location-specific help when available.
 
-### 4.9 Play and "sell cute" loop
+### 4.10 Play and "sell cute" loop
 
 The playful layer is not a separate game. It is a low-cost reward around useful moments:
 
@@ -359,6 +415,7 @@ The magnet is a core interaction and a failure risk.
 | Capacitive touch or force sensor | Wake, cancel, reassurance, mode changes | Use press duration patterns that do not require precise aiming |
 | IMU | Tilt and movement effects; possible removal/drop detection | Do not infer a user command from motion alone |
 | Haptic motor | Quiet feedback | Keep patterns distinguishable and low power |
+| BLE radio / GATT link | Low-power control and status link to the phone | Use for Fuji-to-phone commands; do not treat it as an A2DP audio source |
 | Battery, charge IC, fuel gauge | Wearable power | Measure real idle/listening/acting profiles before promising runtime |
 | Magnet and mount | Wearability | Prototype independently before final enclosure |
 
@@ -397,10 +454,10 @@ User voice / touch / motion
      Fuji device (ESP32-S3)
      - local state machine
      - wake / mute / touch
-     - face, light, haptic, audio
+     - face, light, haptic, local audio
      - connection and battery status
              |
-       BLE / local link / hotspot
+          BLE GATT
              v
        Phone companion bridge
        - pairing and permissions
@@ -408,13 +465,17 @@ User voice / touch / motion
        - reminders and transcript
        - privacy and memory controls
              |
+       phone Bluetooth audio route
+              |
+       Bluetooth earphones <--> music player
+              |
        network services / XiaoZhi / search
        - speech and intent processing
        - recommendation data
        - translation
 ```
 
-The exact transport can follow the XiaoZhi base image and the supported phone integration path. The important boundary is that Fuji remains understandable if the phone or network fails, and the phone remains the authority for external actions such as launching navigation or creating a reminder.
+The exact BLE transport can follow the XiaoZhi base image and the supported phone integration path. The important boundary is that Fuji remains understandable if the phone or network fails, the phone remains the authority for external actions, and the phone remains the audio hub for earphones and music. Fuji's own speaker is a fallback output, not the direct source for Bluetooth earphone audio in P0.
 
 ### 6.2 Responsibility split
 
@@ -433,6 +494,8 @@ The exact transport can follow the XiaoZhi base image and the supported phone in
 - permissions for location, maps, reminders, and notifications;
 - map launch and handoff confirmation;
 - reminder creation and duplicate prevention;
+- maintaining the Fuji BLE GATT link while the phone streams audio to earphones;
+- output-route verification, audio focus, music duck/pause/restore, and supported media commands;
 - user-facing transcript, memory, privacy, and error recovery;
 - a local cache of the last safe status and a small set of offline intents.
 
@@ -459,7 +522,9 @@ Use a small, versioned message contract rather than coupling firmware to one clo
     "distance_minutes": 10,
     "budget_rmb": 50,
     "avoid": ["spicy"],
-    "location_permission": "granted"
+    "location_permission": "granted",
+    "output_route": "phone_earphones",
+    "music_policy": "duck_then_restore"
   },
   "requires_confirmation": true,
   "expires_at": "2026-07-13T12:30:00+08:00"
@@ -489,6 +554,8 @@ The assistant may phrase a result playfully, but the underlying ranking should r
 | Speech recognition uncertain | Ask for a repeat or offer touch/push-to-talk; do not guess a destructive action |
 | Search returns nothing | Explain that no matching result was found and relax one constraint with permission |
 | Map handoff fails | State failure and provide name/address through voice and phone text |
+| Earphones unavailable or disconnected | Do not speak private content through Fuji automatically; use face/haptic feedback and ask the user to reconnect or explicitly enable the device speaker |
+| Music player does not expose a supported control API | Keep Fuji's response route available, but explain that play/pause/next control is unavailable |
 | Battery low | Reduce animation and unsolicited behaviour; warn early; preserve mute state |
 | Firmware/service restart | Return to a safe idle state; never resume listening or an external action silently |
 
@@ -503,6 +570,7 @@ The minimum useful data is a transient request, approximate location for an acti
 - food preferences stored only after a clear "remember this" confirmation;
 - transcripts visible and deletable from the phone bridge;
 - no contacts, messages, or arbitrary app access in P0;
+- no raw music audio passes through Fuji; the phone remains the media route and only requested playback intents are shared;
 - clear network/service disclosure during setup;
 - export and delete controls before any public beta.
 
@@ -524,7 +592,7 @@ Connect the ESP32-S3 to the XiaoZhi voice base or a controlled voice stub. Add t
 
 #### Prototype 2: service bridge
 
-Add a minimal phone bridge with hotspot status, location permission, one supported map handoff, and a fake or constrained restaurant data source. Measure end-to-end latency and failure recovery.
+Add a minimal phone bridge with hotspot status, location permission, one supported map handoff, a fake or constrained restaurant data source, and one reference earphone route. Measure end-to-end latency, audio focus, music duck/restore, and failure recovery.
 
 #### Prototype 3: integrated pilot
 
@@ -539,6 +607,7 @@ Use the real recommendation path, route handoff, preference memory, battery meas
 | Voice or touch beats phone operation when energy is low | Time matched phone and Fuji tasks alone and in small groups | Lower effort and comparable success | Shorten prompts; add push-to-talk; narrow task |
 | Expressions increase reuse | A/B test neutral versus character responses | Character version improves delight without increased interruption | Reduce animation frequency or rewrite personality |
 | Quiet mode protects public comfort | Trial normal, quiet, and haptic-only modes | Users can identify state and choose mode without help | Improve indicators and tactile controls |
+| Phone can keep Fuji and earphones usable together | Test Fuji BLE control while the phone streams music to a reference earphone pair | Fuji response is private, music behavior matches the chosen policy, and disconnects fall back safely | Narrow supported OS/device matrix or use face/haptic-only output |
 | Explicit memory is trusted | Offer save/delete after food flow | Users understand and can change the preference | Remove implicit learning and simplify wording |
 | Map handoff is understandable | Inject permission and app failures | Users know whether route launched and what to do next | Add phone status screen and stronger confirmation |
 
@@ -549,9 +618,10 @@ Use the real recommendation path, route handoff, preference memory, battery meas
 3. Ask them to resolve a meal decision alone or with one trusted person, using one constraint.
 4. Introduce a correction ("closer," "no spicy food") and observe whether they know how to recover.
 5. Trigger a map handoff and then a simulated failure.
-6. Ask them to turn on quiet mode and mute.
-7. Let them use Fuji freely for ten minutes.
-8. Ask the one test question from `TargetUser_Persona.md` and record the next recurring moment they name.
+6. Pair reference earphones to the phone, play music, and test a private Fuji response, then disconnect the earphones.
+7. Ask them to turn on quiet mode and mute.
+8. Let them use Fuji freely for ten minutes.
+9. Ask the one test question from `TargetUser_Persona.md` and record the next recurring moment they name.
 
 Do not coach the participant toward the intended gesture. Record the first attempt, the words they use, the state they think Fuji is in, and where they look for reassurance.
 
@@ -562,6 +632,8 @@ Collect only what is necessary and disclose it:
 - request type and success/failure code;
 - elapsed time between states;
 - disconnect and retry count;
+- Fuji BLE, phone audio-route, and earphone-route state transitions;
+- audio-focus result, music policy selected, and whether music restored after a response;
 - whether the user confirmed, rejected, or corrected a suggestion;
 - battery level at start and end of a session;
 - optional user-rated delight, interruption, and trust scores.
@@ -577,7 +649,7 @@ Do not retain raw audio by default. A separate, explicit consent flow is require
 - Confirm XiaoZhi audio/network hooks and the ESP32-S3 board configuration;
 - create the state machine and message-envelope stubs;
 - interview target users and run the phone-only Wizard-of-Oz;
-- decide the first supported phone platform and map handoff path.
+- decide the first supported phone platform, map handoff path, and reference earphone pair.
 
 **Exit:** the team can demonstrate the food flow with a researcher behind the scenes and has evidence for the first physical mount.
 
@@ -586,7 +658,7 @@ Do not retain raw audio by default. A separate, explicit consent flow is require
 - Implement local state feedback, touch, mute, and expressions;
 - build three printed body/mount variants;
 - measure audio, wake, battery, and magnetic retention in realistic positions;
-- test character scripts and quiet mode with target users.
+- test character scripts, quiet mode, and private earphone output with target users.
 
 **Exit:** users can understand all states and wear the object for an outing without coaching.
 
@@ -594,6 +666,7 @@ Do not retain raw audio by default. A separate, explicit consent flow is require
 
 - Implement phone pairing and connection recovery;
 - add constrained food search and one map handoff;
+- add the phone-earphone output route, music policy, and basic supported media controls;
 - implement confirmation, stale-result handling, and error states;
 - collect pilot telemetry with explicit consent.
 
@@ -640,6 +713,8 @@ Do not retain raw audio by default. A separate, explicit consent flow is require
 - Device, phone bridge, and service messages are versioned and reject stale responses.
 - Reconnect, timeout, low battery, and restart paths return to a safe state.
 - Map and reminder operations are idempotent and report actual completion.
+- The phone can maintain the Fuji BLE link while streaming Fuji responses and music to the reference earphones; route loss falls back without an unexpected public announcement.
+- Music pause/duck/restore behavior is explicit, user-configurable, and limited to supported phone media APIs.
 - No raw audio is retained by default, and user data can be reviewed/deleted.
 
 ### Validation
@@ -648,6 +723,7 @@ Do not retain raw audio by default. A separate, explicit consent flow is require
 - The team records a real recurring use case, not just a novelty reaction.
 - Food recommendations have a reason, a freshness boundary, and a fallback when data is incomplete.
 - Results are compared with the persona measures: repeat use, interruption, relevance, and trust.
+- Silent-use results include private audibility, route reliability, music restoration, and safe behavior after earphone disconnect.
 
 ---
 
@@ -656,6 +732,8 @@ Do not retain raw audio by default. A separate, explicit consent flow is require
 | Risk / open decision | Why it is unresolved | Next decision test |
 |---|---|---|
 | Exact map integration path | Different phones and regions expose different handoff APIs | Select one supported phone path for P0 and document the fallback |
+| Phone and earphone simultaneous Bluetooth behavior | OS audio focus, background limits, Bluetooth profiles, and earphone multipoint differ by model | Select a reference phone/earphone pair, test Fuji BLE plus music streaming, and publish the supported matrix |
+| Direct Fuji-to-earphone audio | The current ESP32-S3/XiaoZhi target is planned as a BLE control endpoint, not a verified A2DP/LE Audio source | Keep phone-hub topology; change hardware only if direct audio becomes a validated requirement |
 | XiaoZhi customisation boundary | The prebuilt base image may limit local state or audio hooks | Inspect and test supported extension points before firmware architecture is fixed |
 | Face hardware | Display is expressive but costs power and enclosure depth; LEDs are simpler | Compare recognition and delight with a tiny display versus light-only body |
 | Battery size versus shoulder comfort | More capacity increases mass and changes the mount | Test dummy weights and measure real workload before selecting a cell |
