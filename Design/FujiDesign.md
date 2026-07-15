@@ -9,7 +9,6 @@ Core function: It's cute, very cute. It feels warm and soft. It has cute facial 
 Make a bad mood vanish, make a good day even better.
 
 
-
 软萌 团子 bot  (Fuji) 
 尺寸：较小 可以磁吸 戴在肩膀上（？ 可出门 更像饰品兼小工具/赛博宠物？
 性格：软萌，古灵精怪等
