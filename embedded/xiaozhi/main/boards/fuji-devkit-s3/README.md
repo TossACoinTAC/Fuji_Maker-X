@@ -54,6 +54,15 @@ numeric GPIO values.
   normal application. Use only after the wiring gates above are complete.
 - `fuji-devkit-s3`: normal Xiaozhi application.
 
+In the normal and self-test builds, a short button press wakes or cancels the
+current conversation. A 1.5-second press toggles software microphone mute. The
+mute path supplies silence to the audio pipeline without stopping its tasks.
+
+The audio self-test prints 15 microphone frame peaks and an aggregate RMS value,
+then plays a 700 ms, 440 Hz tone at 10% software volume. The MAX98357A `SD` pin
+is kept low before and after playback. An absent microphone should produce a
+clear silent/timeout warning; an absent amplifier cannot be detected in software.
+
 The initial ST7735S offsets are `x=2`, `y=3`, which is common for 1.44-inch
 128x128 panels. If the image is shifted, confirm the tab/controller variant and
 adjust only the board constants.
