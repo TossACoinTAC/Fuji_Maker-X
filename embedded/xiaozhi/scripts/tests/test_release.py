@@ -25,7 +25,7 @@ class VersionTests(unittest.TestCase):
         idf5 = release._collect_variants(idf_version=(5, 5, 4))
         idf6 = release._collect_variants(idf_version=(6, 0, 2))
         self.assertEqual(len(idf5), 172)
-        self.assertEqual(len(idf6), 161)
+        self.assertEqual(len(idf6), 162)
         for variants in (idf5, idf6):
             names = [variant["full_name"] for variant in variants]
             self.assertEqual(len(names), len(set(names)))
@@ -39,7 +39,12 @@ class VersionTests(unittest.TestCase):
             self.assertFalse(any(item["board"] == "fuji-devkit-s3" for item in variants))
         self.assertEqual(
             sorted(item["name"] for item in current if item["board"] == "fuji-devkit-s3"),
-            ["fuji-devkit-s3", "fuji-devkit-s3-probe", "fuji-devkit-s3-self-test"],
+            [
+                "fuji-devkit-s3",
+                "fuji-devkit-s3-display-test",
+                "fuji-devkit-s3-probe",
+                "fuji-devkit-s3-self-test",
+            ],
         )
 
 

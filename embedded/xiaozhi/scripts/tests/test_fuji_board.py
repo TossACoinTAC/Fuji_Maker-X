@@ -48,7 +48,12 @@ class FujiBoardConfigTests(unittest.TestCase):
         config = json.loads((_BOARD_DIR / "config.json").read_text(encoding="utf-8"))
         self.assertEqual(
             {build["name"] for build in config["builds"]},
-            {"fuji-devkit-s3", "fuji-devkit-s3-probe", "fuji-devkit-s3-self-test"},
+            {
+                "fuji-devkit-s3",
+                "fuji-devkit-s3-probe",
+                "fuji-devkit-s3-display-test",
+                "fuji-devkit-s3-self-test",
+            },
         )
         self.assertTrue(all(build["idf_version"] == "==6.0.2" for build in config["builds"]))
         probe = next(build for build in config["builds"] if build["name"].endswith("-probe"))
@@ -57,12 +62,22 @@ class FujiBoardConfigTests(unittest.TestCase):
     def test_probe_entry_does_not_construct_a_board_or_open_nvs(self):
         main = (_PROJECT_ROOT / "main" / "main.cc").read_text(encoding="utf-8")
         probe_branch = main.split("#if CONFIG_BOARD_PROBE_ONLY", maxsplit=2)[2].split(
-            "#else", maxsplit=1
+            "#elif CONFIG_BOARD_DISPLAY_TEST_ONLY", maxsplit=1
         )[0]
 
         self.assertIn("RunFujiDevKitS3BoardProbe();", probe_branch)
         self.assertNotIn("Board::GetInstance()", probe_branch)
         self.assertNotIn("nvs_flash_init()", probe_branch)
+
+    def test_display_test_stops_before_application_startup(self):
+        main = (_PROJECT_ROOT / "main" / "main.cc").read_text(encoding="utf-8")
+        display_branch = main.split("#elif CONFIG_BOARD_DISPLAY_TEST_ONLY", maxsplit=1)[1].split(
+            "#else", maxsplit=1
+        )[0]
+
+        self.assertIn("Board::GetInstance();", display_branch)
+        self.assertIn("IdleForever();", display_branch)
+        self.assertNotIn("Application::GetInstance()", display_branch)
 
 
 if __name__ == "__main__":

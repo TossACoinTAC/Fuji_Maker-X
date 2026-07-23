@@ -601,10 +601,18 @@ config BOARD_PROBE_ONLY
         Print chip, flash, PSRAM and reset information, then remain idle.
         No display, audio, button or Wi-Fi hardware is initialized.
 
+config BOARD_DISPLAY_TEST_ONLY
+    bool "Fuji display test only (no audio, button or network)"
+    default n
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY
+    help
+        Initialize only the ST7735S display, show solid test colors, then idle.
+        No audio, button or Wi-Fi hardware is initialized.
+
 config BOARD_HARDWARE_SELF_TEST
     bool "Run Fuji peripheral self-test before the application"
     default n
-    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY
     help
         Exercise the display, microphone and speaker before starting Xiaozhi.
         Only enable this after all modules have been wired and checked.

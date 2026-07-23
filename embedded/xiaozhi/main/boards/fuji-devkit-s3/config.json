@@ -22,6 +22,16 @@
             ]
         },
         {
+            "name": "fuji-devkit-s3-display-test",
+            "idf_version": "==6.0.2",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_BOARD_DISPLAY_TEST_ONLY=y"
+            ]
+        },
+        {
             "name": "fuji-devkit-s3-self-test",
             "idf_version": "==6.0.2",
             "sdkconfig_append": [

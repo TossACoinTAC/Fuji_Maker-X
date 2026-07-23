@@ -70,6 +70,9 @@ numeric GPIO values.
 - `fuji-devkit-s3-probe`: logs board storage and reset information, then idles
   without mounting NVS or initializing display, audio, button, or Wi-Fi. It can
   still reach the serial report if the expected PSRAM is not detected.
+- `fuji-devkit-s3-display-test`: initializes only the ST7735S, shows red,
+  green, blue and white frames, then holds the white frame. It does not start
+  audio, the button, Wi-Fi or the normal application.
 - `fuji-devkit-s3-self-test`: runs the wired peripheral self-test before the
   normal application. Use only after the wiring gates above are complete.
 - `fuji-devkit-s3`: normal Xiaozhi application.

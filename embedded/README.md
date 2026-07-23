@@ -46,3 +46,7 @@ and board definition are present for the exact signal wiring.
 For the first board-only session, follow
 `embedded/FIRST_USB_BRINGUP_zh.md`. Stop after the read-only probe and verified
 16 MiB backup; do not flash until those results have been reviewed.
+
+After the USB-only probe passes, follow `embedded/DISPLAY_BRINGUP_zh.md`. It
+requires a mechanically stable connector on the display before any wiring or
+power is applied.

@@ -281,8 +281,9 @@ private:
     }
 
     void RunDisplaySelfTest() {
-#if CONFIG_BOARD_HARDWARE_SELF_TEST
+#if CONFIG_BOARD_HARDWARE_SELF_TEST || CONFIG_BOARD_DISPLAY_TEST_ONLY
         ESP_LOGI(TAG, "display self-test: red, green, blue, white");
+        gpio_set_level(DISPLAY_BACKLIGHT_GPIO, DISPLAY_BACKLIGHT_OUTPUT_INVERT ? 0 : 1);
         constexpr uint16_t kColors[] = {0xF800, 0x07E0, 0x001F, 0xFFFF};
         for (uint16_t color : kColors) {
             if (!DrawSolidColor(color)) {
@@ -353,26 +354,47 @@ private:
             return false;
         }
 
+        const esp_err_t display_on_result = esp_lcd_panel_disp_on_off(panel_, true);
+        if (display_on_result != ESP_OK && display_on_result != ESP_ERR_NOT_SUPPORTED) {
+            ESP_LOGE(TAG, "display power-on failed: %s; continuing without a display",
+                     esp_err_to_name(display_on_result));
+            return false;
+        }
+        if (display_on_result == ESP_ERR_NOT_SUPPORTED) {
+            ESP_LOGW(TAG, "panel does not support display power control; assuming it is on");
+        }
+
         ESP_LOGW(TAG, "ST7735 SPI initialized, but this write-only bus cannot verify panel presence");
         RunDisplaySelfTest();
+#if CONFIG_BOARD_DISPLAY_TEST_ONLY
+        ESP_LOGI(TAG, "display-only test is holding the final white frame");
+        return true;
+#else
         display_ = new SpiLcdDisplay(
             panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
             DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y,
             DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
         return display_ != nullptr;
+#endif
     }
 
 public:
     FujiDevKitS3() {
         LogBoardProbe();
 #if !CONFIG_BOARD_PROBE_ONLY
+#if !CONFIG_BOARD_DISPLAY_TEST_ONLY
         InitializeAmpSafeState();
+#endif
         if (InitializeDisplay()) {
+#if !CONFIG_BOARD_DISPLAY_TEST_ONLY
             GetBacklight()->RestoreBrightness();
+#endif
         }
+#if !CONFIG_BOARD_DISPLAY_TEST_ONLY
         InitializeButton();
 #if CONFIG_BOARD_HARDWARE_SELF_TEST
         GetFujiAudioCodec()->RunSelfTest();
+#endif
 #endif
 #endif
     }

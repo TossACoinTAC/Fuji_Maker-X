@@ -15,24 +15,40 @@
 
 #define TAG "main"
 
+namespace {
+
+void InitializeNvs() {
+    esp_err_t result = nvs_flash_init();
+    if (result == ESP_ERR_NVS_NO_FREE_PAGES || result == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "Erasing NVS flash to fix corruption");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        result = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(result);
+}
+
+void IdleForever() {
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+}  // namespace
+
 extern "C" void app_main(void)
 {
 #if CONFIG_BOARD_PROBE_ONLY
     // Do not construct Board here: its base constructor persists a UUID in NVS.
     RunFujiDevKitS3BoardProbe();
     ESP_LOGI(TAG, "Board probe complete; NVS, peripherals and network remain disabled");
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    IdleForever();
+#elif CONFIG_BOARD_DISPLAY_TEST_ONLY
+    InitializeNvs();
+    Board::GetInstance();
+    ESP_LOGI(TAG, "Display test complete; audio, button and network remain disabled");
+    IdleForever();
 #else
-    // Initialize NVS flash for WiFi configuration
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "Erasing NVS flash to fix corruption");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    InitializeNvs();
 
     // Initialize and run the application
     auto& app = Application::GetInstance();
