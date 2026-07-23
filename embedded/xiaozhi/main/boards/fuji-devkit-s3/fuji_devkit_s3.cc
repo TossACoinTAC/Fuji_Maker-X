@@ -2,6 +2,7 @@
 
 #include "application.h"
 #include "assets/lang_config.h"
+#include "board_probe.h"
 #include "button.h"
 #include "codecs/no_audio_codec.h"
 #include "config.h"
@@ -88,6 +89,10 @@ void LogBoardProbe() {
 }
 
 }  // namespace
+
+void RunFujiDevKitS3BoardProbe() {
+    LogBoardProbe();
+}
 
 class FujiAudioCodec : public NoAudioCodecDuplex {
 private:

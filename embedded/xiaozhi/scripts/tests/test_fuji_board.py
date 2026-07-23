@@ -54,6 +54,16 @@ class FujiBoardConfigTests(unittest.TestCase):
         probe = next(build for build in config["builds"] if build["name"].endswith("-probe"))
         self.assertIn("CONFIG_SPIRAM_IGNORE_NOTFOUND=y", probe["sdkconfig_append"])
 
+    def test_probe_entry_does_not_construct_a_board_or_open_nvs(self):
+        main = (_PROJECT_ROOT / "main" / "main.cc").read_text(encoding="utf-8")
+        probe_branch = main.split("#if CONFIG_BOARD_PROBE_ONLY", maxsplit=2)[2].split(
+            "#else", maxsplit=1
+        )[0]
+
+        self.assertIn("RunFujiDevKitS3BoardProbe();", probe_branch)
+        self.assertNotIn("Board::GetInstance()", probe_branch)
+        self.assertNotIn("nvs_flash_init()", probe_branch)
+
 
 if __name__ == "__main__":
     unittest.main()

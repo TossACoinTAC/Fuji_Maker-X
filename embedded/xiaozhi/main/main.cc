@@ -9,15 +9,17 @@
 
 #include "application.h"
 #include "board.h"
+#if CONFIG_BOARD_PROBE_ONLY
+#include "boards/fuji-devkit-s3/board_probe.h"
+#endif
 
 #define TAG "main"
 
 extern "C" void app_main(void)
 {
 #if CONFIG_BOARD_PROBE_ONLY
-    // Constructing the selected board prints the probe report. Keep this path
-    // read-only: do not mount NVS or initialize display, audio, buttons or Wi-Fi.
-    Board::GetInstance();
+    // Do not construct Board here: its base constructor persists a UUID in NVS.
+    RunFujiDevKitS3BoardProbe();
     ESP_LOGI(TAG, "Board probe complete; NVS, peripherals and network remain disabled");
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));

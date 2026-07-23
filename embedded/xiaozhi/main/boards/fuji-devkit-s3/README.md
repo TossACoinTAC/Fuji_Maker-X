@@ -21,6 +21,19 @@ The original Flash must actually be backed up before the first Fuji image is
 flashed. Follow `embedded/FIRST_USB_BRINGUP_zh.md`; PSRAM is confirmed by the
 probe image only after that backup is complete.
 
+## Verified hardware
+
+The USB-only probe on 2026-07-23 confirmed an ESP32-S3 QFN56 rev 0.2, a 16 MiB
+Boya Quad Flash device and 8 MiB AP Octal PSRAM. The fixed probe starts once,
+reports those values and remains idle without opening NVS or starting the
+network or peripherals.
+
+The photographed display PCB is marked `1.44-128X128 RGB-TFT` and
+`Driver IC: ST7735S`. Its eight through-holes are not populated with a pin
+header. Do not power the display using loose jumper pins inserted into those
+holes; fit a stable 2.54 mm header or another positively retained connector
+before the display test.
+
 ## Initial wiring
 
 | Module | Module pin | ESP32-S3 | Notes |
