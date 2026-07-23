@@ -126,6 +126,9 @@ choice BOARD_TYPE
     config BOARD_TYPE_BREAD_COMPACT_WIFI
         bool "Bread Compact WiFi (面包板)"
         depends on IDF_TARGET_ESP32S3
+    config BOARD_TYPE_FUJI_DEVKIT_S3
+        bool "Fuji DevKit S3 (ESP32-S3-N16R8)"
+        depends on IDF_TARGET_ESP32S3
     config BOARD_TYPE_BREAD_COMPACT_WIFI_LCD
         bool "Bread Compact WiFi + LCD (面包板)"
         depends on IDF_TARGET_ESP32S3
@@ -589,6 +592,22 @@ choice BOARD_TYPE
         bool "LCD Wiki ES3C35P (3.5寸 ESP32-S3)"
         depends on IDF_TARGET_ESP32S3
 endchoice
+
+config BOARD_PROBE_ONLY
+    bool "Board probe only (no peripherals or network)"
+    default n
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3
+    help
+        Print chip, flash, PSRAM and reset information, then remain idle.
+        No display, audio, button or Wi-Fi hardware is initialized.
+
+config BOARD_HARDWARE_SELF_TEST
+    bool "Run Fuji peripheral self-test before the application"
+    default n
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY
+    help
+        Exercise the display, microphone and speaker before starting Xiaozhi.
+        Only enable this after all modules have been wired and checked.
 
 choice XIAOZHI_NETWORK_TYPE
     prompt "Network Type"

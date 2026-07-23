@@ -25,7 +25,7 @@ class VersionTests(unittest.TestCase):
         idf5 = release._collect_variants(idf_version=(5, 5, 4))
         idf6 = release._collect_variants(idf_version=(6, 0, 1))
         self.assertEqual(len(idf5), 172)
-        self.assertEqual(len(idf6), 158)
+        self.assertEqual(len(idf6), 161)
         for variants in (idf5, idf6):
             names = [variant["full_name"] for variant in variants]
             self.assertEqual(len(names), len(set(names)))

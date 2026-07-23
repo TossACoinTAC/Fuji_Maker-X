@@ -1,0 +1,34 @@
+{
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "fuji-devkit-s3",
+            "idf_version": ">=6.0.0",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y"
+            ]
+        },
+        {
+            "name": "fuji-devkit-s3-probe",
+            "idf_version": ">=6.0.0",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_BOARD_PROBE_ONLY=y"
+            ]
+        },
+        {
+            "name": "fuji-devkit-s3-self-test",
+            "idf_version": ">=6.0.0",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_BOARD_HARDWARE_SELF_TEST=y"
+            ]
+        }
+    ]
+}
