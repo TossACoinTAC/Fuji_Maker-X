@@ -10,7 +10,9 @@ release tooling can build a uniquely named firmware image.
 ## Toolchain
 
 Use the ESP-IDF version documented by the pinned XiaoZhi commit. The initial
-baseline is ESP-IDF 6.0.2 on the `esp32s3` target.
+baseline is exactly ESP-IDF 6.0.2 on the `esp32s3` target. The generated
+`dependencies.lock` is committed so registry dependencies resolve to the same
+versions and hashes on clean machines.
 
 ```sh
 . "$IDF_PATH/export.sh"
@@ -34,3 +36,7 @@ and 320x240 display.
 
 See `embedded/xiaozhi/main/boards/fuji-devkit-s3/README.md` after the subtree
 and board definition are present for the exact signal wiring.
+
+For the first board-only session, follow
+`embedded/FIRST_USB_BRINGUP_zh.md`. Stop after the read-only probe and verified
+16 MiB backup; do not flash until those results have been reviewed.

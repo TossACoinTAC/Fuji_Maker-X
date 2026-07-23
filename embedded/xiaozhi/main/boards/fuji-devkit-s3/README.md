@@ -8,12 +8,18 @@ ESP32-S3-N16R8 module. It is intentionally independent from the upstream
 
 1. Start with only the USB-C port marked `COM`. Disconnect every peripheral and
    keep the battery disconnected.
-2. Build and flash `fuji-devkit-s3-probe`. Confirm 16 MiB Flash, 8 MiB PSRAM,
-   reset and download behavior, then back up the original Flash.
-3. Connect and test only the display.
-4. Connect the microphone and amplifier only after the display test passes.
-5. Do not connect the bare-wire LiPo to `5V`, `3V3`, or either USB power path.
+2. Read the chip and Flash information, then make and verify two matching
+   16 MiB backups of the original Flash.
+3. Flash `fuji-devkit-s3-probe`. Confirm 16 MiB Flash, 8 MiB PSRAM, reset and
+   download behavior before connecting any peripheral.
+4. Connect and test only the display.
+5. Connect the microphone and amplifier only after the display test passes.
+6. Do not connect the bare-wire LiPo to `5V`, `3V3`, or either USB power path.
    A multimeter and a verified protected charging/power path are required first.
+
+The original Flash must actually be backed up before the first Fuji image is
+flashed. Follow `embedded/FIRST_USB_BRINGUP_zh.md`; PSRAM is confirmed by the
+probe image only after that backup is complete.
 
 ## Initial wiring
 
@@ -49,7 +55,8 @@ numeric GPIO values.
 ## Build variants
 
 - `fuji-devkit-s3-probe`: logs board storage and reset information, then idles
-  without initializing display, audio, button, or Wi-Fi.
+  without mounting NVS or initializing display, audio, button, or Wi-Fi. It can
+  still reach the serial report if the expected PSRAM is not detected.
 - `fuji-devkit-s3-self-test`: runs the wired peripheral self-test before the
   normal application. Use only after the wiring gates above are complete.
 - `fuji-devkit-s3`: normal Xiaozhi application.
