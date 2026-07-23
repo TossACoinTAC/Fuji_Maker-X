@@ -15,21 +15,21 @@ Flash，并做一份完整原厂 Flash 备份。本文中的命令不会写入�
 
 ## 1. 加载 ESP-IDF 6.0.2
 
-仓库只支持官方 ESP-IDF `v6.0.2`。`IDF_PATH` 必须指向本机持久安装的 ESP-IDF
-目录；本文不依赖 `/private/tmp`。使用自定义工具目录时，还要在加载环境前设置
-`IDF_TOOLS_PATH`。打开终端后运行：
+仓库只支持官方 ESP-IDF `v6.0.2`。本机持久安装目录为
+`~/esp/esp-idf-v6.0.2`，工具目录为 `~/.espressif`；本文不依赖 `/private/tmp`。
+请使用 zsh 打开终端后运行：
 
-```sh
-cd /Users/apple/Documents/Skd_Learning/26summer/Maker-X/embedded/xiaozhi
-test -n "$IDF_PATH" || { echo "请先设置 IDF_PATH"; return 1; }
-test -f "$IDF_PATH/export.sh" || { echo "IDF_PATH 中没有 export.sh"; return 1; }
-. "$IDF_PATH/export.sh"
+```zsh
+cd /Users/apple/Documents/Skd_Learning/26summer/Maker-X
+source embedded/activate_idf.zsh
+cd embedded/xiaozhi
 idf.py --version
 ```
 
 最后一条应显示 `ESP-IDF v6.0.2`。如果没有安装、路径不同或版本不是 6.0.2，先停止，
 不要使用其他版本继续。若显示 `v6.0.2-dirty`，运行 `git -C "$IDF_PATH" status` 查明
-原因；正式构建环境不应依赖缺文件或带本地修改的 ESP-IDF 源码。
+原因；正式构建环境不应依赖缺文件或带本地修改的 ESP-IDF 源码。激活脚本会清除旧的
+`IDF_TOOLS_PATH` 和 `IDF_PYTHON_ENV_PATH`，避免继续引用已经清理的临时目录。
 
 ## 2. 找到 COM 串口
 

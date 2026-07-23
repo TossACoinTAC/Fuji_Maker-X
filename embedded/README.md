@@ -9,17 +9,23 @@ release tooling can build a uniquely named firmware image.
 
 ## Toolchain
 
-Use the ESP-IDF version documented by the pinned XiaoZhi commit. The initial
-baseline is exactly ESP-IDF 6.0.2 on the `esp32s3` target. The generated
-`dependencies.lock` is committed so registry dependencies resolve to the same
-versions and hashes on clean machines.
+Use the ESP-IDF version documented by the pinned XiaoZhi commit. The local
+baseline is a clean ESP-IDF 6.0.2 checkout at `~/esp/esp-idf-v6.0.2`, with
+tools in the standard `~/.espressif` directory, on the `esp32s3` target. The
+generated `dependencies.lock` is committed so registry dependencies resolve to
+the same versions and hashes on clean machines.
 
-```sh
-. "$IDF_PATH/export.sh"
+```zsh
+cd /Users/apple/Documents/Skd_Learning/26summer/Maker-X
+source embedded/activate_idf.zsh
 cd embedded/xiaozhi
-idf.py set-target esp32s3
-idf.py build
+idf.py --version
+python scripts/release.py fuji-devkit-s3 --name fuji-devkit-s3-probe
 ```
+
+The version command must print exactly `ESP-IDF v6.0.2`, without a `dirty`
+suffix. Use zsh consistently; a different shell may select a different system
+Python installation.
 
 Do not flash `firmware/v2.0.3_atk-dnesp32s3.bin` to the Fuji breadboard. That
 image targets a different carrier with an ES8388 codec, XL9555 I/O expander,
