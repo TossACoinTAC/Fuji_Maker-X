@@ -14,6 +14,15 @@
 
 extern "C" void app_main(void)
 {
+#if CONFIG_BOARD_PROBE_ONLY
+    // Constructing the selected board prints the probe report. Keep this path
+    // read-only: do not mount NVS or initialize display, audio, buttons or Wi-Fi.
+    Board::GetInstance();
+    ESP_LOGI(TAG, "Board probe complete; NVS, peripherals and network remain disabled");
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+#else
     // Initialize NVS flash for WiFi configuration
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -23,15 +32,6 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-#if CONFIG_BOARD_PROBE_ONLY
-    // Constructing the selected board prints the probe report. Do not initialize
-    // the application: it would start display, audio and Wi-Fi peripherals.
-    Board::GetInstance();
-    ESP_LOGI(TAG, "Board probe complete; peripherals and network remain disabled");
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-#else
     // Initialize and run the application
     auto& app = Application::GetInstance();
     app.Initialize();

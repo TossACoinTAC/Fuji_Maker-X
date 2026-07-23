@@ -23,12 +23,24 @@ class VersionTests(unittest.TestCase):
 
     def test_current_matrix_counts_and_uniqueness(self):
         idf5 = release._collect_variants(idf_version=(5, 5, 4))
-        idf6 = release._collect_variants(idf_version=(6, 0, 1))
+        idf6 = release._collect_variants(idf_version=(6, 0, 2))
         self.assertEqual(len(idf5), 172)
         self.assertEqual(len(idf6), 161)
         for variants in (idf5, idf6):
             names = [variant["full_name"] for variant in variants]
             self.assertEqual(len(names), len(set(names)))
+
+    def test_fuji_variants_require_idf_6_0_2(self):
+        before = release._collect_variants(idf_version=(6, 0, 1))
+        current = release._collect_variants(idf_version=(6, 0, 2))
+        after = release._collect_variants(idf_version=(6, 0, 3))
+
+        for variants in (before, after):
+            self.assertFalse(any(item["board"] == "fuji-devkit-s3" for item in variants))
+        self.assertEqual(
+            sorted(item["name"] for item in current if item["board"] == "fuji-devkit-s3"),
+            ["fuji-devkit-s3", "fuji-devkit-s3-probe", "fuji-devkit-s3-self-test"],
+        )
 
 
 class BoardSelectionTests(unittest.TestCase):

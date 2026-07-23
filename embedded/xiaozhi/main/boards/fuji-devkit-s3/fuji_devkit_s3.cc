@@ -35,6 +35,28 @@
 
 namespace {
 
+const char* ResetReasonName(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_POWERON: return "power-on";
+        case ESP_RST_EXT: return "external-pin";
+        case ESP_RST_SW: return "software";
+        case ESP_RST_PANIC: return "panic";
+        case ESP_RST_INT_WDT: return "interrupt-watchdog";
+        case ESP_RST_TASK_WDT: return "task-watchdog";
+        case ESP_RST_WDT: return "watchdog";
+        case ESP_RST_DEEPSLEEP: return "deep-sleep-wakeup";
+        case ESP_RST_BROWNOUT: return "brownout";
+        case ESP_RST_SDIO: return "sdio";
+        case ESP_RST_USB: return "usb";
+        case ESP_RST_JTAG: return "jtag";
+        case ESP_RST_EFUSE: return "efuse-error";
+        case ESP_RST_PWR_GLITCH: return "power-glitch";
+        case ESP_RST_CPU_LOCKUP: return "cpu-lockup";
+        case ESP_RST_UNKNOWN:
+        default: return "unknown";
+    }
+}
+
 void LogBoardProbe() {
     esp_chip_info_t chip_info = {};
     esp_chip_info(&chip_info);
@@ -44,7 +66,7 @@ void LogBoardProbe() {
     const size_t psram_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
 
     ESP_LOGI(TAG, "board=fuji-devkit-s3 idf=%s", esp_get_idf_version());
-    ESP_LOGI(TAG, "chip model=%d cores=%d revision=%d features=0x%" PRIx32,
+    ESP_LOGI(TAG, "chip=ESP32-S3 model_id=%d cores=%d revision=%d features=0x%" PRIx32,
              chip_info.model, chip_info.cores, chip_info.revision, chip_info.features);
     if (flash_result == ESP_OK) {
         ESP_LOGI(TAG, "flash=%" PRIu32 " bytes (%" PRIu32 " MiB)",
@@ -53,7 +75,9 @@ void LogBoardProbe() {
         ESP_LOGE(TAG, "flash size query failed: %s", esp_err_to_name(flash_result));
     }
     ESP_LOGI(TAG, "psram=%zu bytes (%zu MiB)", psram_size, psram_size / (1024 * 1024));
-    ESP_LOGI(TAG, "reset_reason=%d", static_cast<int>(esp_reset_reason()));
+    const esp_reset_reason_t reset_reason = esp_reset_reason();
+    ESP_LOGI(TAG, "reset_reason=%s (%d)",
+             ResetReasonName(reset_reason), static_cast<int>(reset_reason));
 
     if (flash_size != 16 * 1024 * 1024) {
         ESP_LOGW(TAG, "expected 16 MiB flash for N16R8; verify the module marking and build config");
@@ -324,7 +348,7 @@ private:
             return false;
         }
 
-        ESP_LOGI(TAG, "ST7735 SPI initialized; this write-only bus cannot detect panel presence");
+        ESP_LOGW(TAG, "ST7735 SPI initialized, but this write-only bus cannot verify panel presence");
         RunDisplaySelfTest();
         display_ = new SpiLcdDisplay(
             panel_io_, panel_, DISPLAY_WIDTH, DISPLAY_HEIGHT,
