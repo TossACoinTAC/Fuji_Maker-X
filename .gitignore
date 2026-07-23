@@ -28,3 +28,8 @@ device.txt
 *.elf
 build/
 firmware/
+
+# MISC
+Images/
+AGENTS.md
+doc_zh/
