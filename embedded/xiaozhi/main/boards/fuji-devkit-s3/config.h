@@ -2,6 +2,7 @@
 #define FUJI_DEVKIT_S3_CONFIG_H
 
 #include <driver/gpio.h>
+#include <driver/spi_master.h>
 
 // Audio: INMP441 input and MAX98357A output share BCLK/WS.
 #define AUDIO_INPUT_SAMPLE_RATE 16000
@@ -31,6 +32,7 @@
 #define DISPLAY_MIRROR_Y false
 #define DISPLAY_SWAP_XY false
 #define DISPLAY_INVERT_COLOR true
+#define DISPLAY_RGB_ORDER LCD_RGB_ELEMENT_ORDER_BGR
 #define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
 
 // External active-low push button. The ESP-IDF button component enables pull-up.
