@@ -618,10 +618,19 @@ config BOARD_OLED_TEST_ONLY
         frames and the Xiaozhi OLED layout, then idle. No audio, button or
         Wi-Fi hardware is initialized.
 
+config BOARD_MIC_TEST_ONLY
+    bool "Fuji INMP441 microphone test only (no speaker, button or network)"
+    default n
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY
+    help
+        Keep the temporary OLED active and capture only the INMP441 receive
+        path. The speaker data pin is unused and the amplifier enable pin is
+        held low. No button, Wi-Fi or normal application is initialized.
+
 config BOARD_HARDWARE_SELF_TEST
     bool "Run Fuji peripheral self-test before the application"
     default n
-    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY && !BOARD_MIC_TEST_ONLY
     help
         Exercise the display, microphone and speaker before starting Xiaozhi.
         Only enable this after all modules have been wired and checked.

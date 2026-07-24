@@ -13,8 +13,9 @@ ESP32-S3-N16R8 module. It is intentionally independent from the upstream
 3. Flash `fuji-devkit-s3-probe`. Confirm 16 MiB Flash, 8 MiB PSRAM, reset and
    download behavior before connecting any peripheral.
 4. Connect and test only the display.
-5. Connect the microphone and amplifier only after the display test passes.
-6. Do not connect the bare-wire LiPo to `5V`, `3V3`, or either USB power path.
+5. Connect and test the microphone alone after the display test passes.
+6. Connect the amplifier only after the isolated microphone test passes.
+7. Do not connect the bare-wire LiPo to `5V`, `3V3`, or either USB power path.
    A multimeter and a verified protected charging/power path are required first.
 
 The original Flash must actually be backed up before the first Fuji image is
@@ -70,6 +71,11 @@ before the display test.
 GPIO constants belong in `config.h`; board and driver code must not duplicate
 numeric GPIO values.
 
+Board orchestration remains in `fuji_devkit_s3.cc`. Hardware responsibilities
+are split into `fuji_board_probe.cc`, `fuji_display.cc`,
+`fuji_audio_codec.cc` and `fuji_microphone_test.cc` so a temporary bring-up
+path does not become coupled to the normal application lifecycle.
+
 ## Build variants
 
 - `fuji-devkit-s3-probe`: logs board storage and reset information, then idles
@@ -81,6 +87,10 @@ numeric GPIO values.
 - `fuji-devkit-s3-oled-test`: scans GPIO11/GPIO12 for an I2C OLED at `0x3C`
   or `0x3D`, initializes an SSD1306 128x32 panel, shows all-on/all-off frames
   and then holds the Xiaozhi OLED status layout. It does not start audio, the
+  button, Wi-Fi or the normal application.
+- `fuji-devkit-s3-mic-test`: keeps the verified OLED active, holds GPIO8 low
+  and captures only the INMP441 RX path on GPIO16/17/18. GPIO15 remains unused;
+  the test reports 8 seconds of peak/RMS levels without starting the speaker,
   button, Wi-Fi or the normal application.
 - `fuji-devkit-s3-self-test`: runs the wired peripheral self-test before the
   normal application. Use only after the wiring gates above are complete.

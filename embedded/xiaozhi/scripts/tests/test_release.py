@@ -25,7 +25,7 @@ class VersionTests(unittest.TestCase):
         idf5 = release._collect_variants(idf_version=(5, 5, 4))
         idf6 = release._collect_variants(idf_version=(6, 0, 2))
         self.assertEqual(len(idf5), 172)
-        self.assertEqual(len(idf6), 163)
+        self.assertEqual(len(idf6), 164)
         for variants in (idf5, idf6):
             names = [variant["full_name"] for variant in variants]
             self.assertEqual(len(names), len(set(names)))
@@ -42,6 +42,7 @@ class VersionTests(unittest.TestCase):
             [
                 "fuji-devkit-s3",
                 "fuji-devkit-s3-display-test",
+                "fuji-devkit-s3-mic-test",
                 "fuji-devkit-s3-oled-test",
                 "fuji-devkit-s3-probe",
                 "fuji-devkit-s3-self-test",

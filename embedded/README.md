@@ -50,3 +50,7 @@ For the first board-only session, follow
 After the USB-only probe passes, follow `embedded/OLED_BRINGUP_zh.md` for the
 temporary soldered 0.91-inch OLED. `embedded/DISPLAY_BRINGUP_zh.md` remains the
 deferred ST7735S guide and requires a soldered header before use.
+
+After the OLED test is verified, follow `embedded/MICROPHONE_BRINGUP_zh.md` for
+the isolated INMP441 receive test. Do not connect the amplifier during that
+stage.

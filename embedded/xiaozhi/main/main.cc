@@ -52,6 +52,11 @@ extern "C" void app_main(void)
     Board::GetInstance();
     ESP_LOGI(TAG, "OLED test complete; audio, button and network remain disabled");
     IdleForever();
+#elif CONFIG_BOARD_MIC_TEST_ONLY
+    InitializeNvs();
+    Board::GetInstance();
+    ESP_LOGI(TAG, "Microphone test complete; speaker, button and network remain disabled");
+    IdleForever();
 #else
     InitializeNvs();
 
