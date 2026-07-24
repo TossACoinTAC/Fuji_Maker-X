@@ -20,6 +20,8 @@ final class FujiCompanionUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["UITEST_MODE"] = "1"
+        app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
 
         // Insert steps here to perform after app launch but before taking a screenshot,
@@ -28,7 +30,7 @@ final class FujiCompanionUITestsLaunchTests: XCTestCase {
         // https://developer.apple.com/documentation/xcuiautomation
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "Launch Screen"
+        attachment.name = "Fuji Home"
         attachment.lifetime = .keepAlways
         add(attachment)
     }
