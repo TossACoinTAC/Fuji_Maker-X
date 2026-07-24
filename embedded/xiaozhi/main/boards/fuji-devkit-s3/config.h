@@ -2,6 +2,7 @@
 #define FUJI_DEVKIT_S3_CONFIG_H
 
 #include <driver/gpio.h>
+#include <driver/i2c_master.h>
 #include <driver/spi_master.h>
 
 // Audio: INMP441 input and MAX98357A output share BCLK/WS.
@@ -34,6 +35,18 @@
 #define DISPLAY_INVERT_COLOR true
 #define DISPLAY_RGB_ORDER LCD_RGB_ELEMENT_ORDER_BGR
 #define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
+
+// Temporary 0.91-inch 128x32 OLED. It reuses the SPI display data/clock pins.
+#define OLED_I2C_PORT I2C_NUM_0
+#define OLED_SDA_GPIO DISPLAY_MOSI_GPIO
+#define OLED_SCL_GPIO DISPLAY_SCLK_GPIO
+#define OLED_I2C_CLOCK_HZ (400 * 1000)
+#define OLED_PRIMARY_ADDRESS 0x3C
+#define OLED_ALTERNATE_ADDRESS 0x3D
+#define OLED_WIDTH 128
+#define OLED_HEIGHT 32
+#define OLED_MIRROR_X false
+#define OLED_MIRROR_Y false
 
 // External active-low push button. The ESP-IDF button component enables pull-up.
 #define USER_BUTTON_GPIO GPIO_NUM_4

@@ -73,6 +73,10 @@ numeric GPIO values.
 - `fuji-devkit-s3-display-test`: initializes only the ST7735S, shows red,
   green, blue and white frames, then holds the white frame. It does not start
   audio, the button, Wi-Fi or the normal application.
+- `fuji-devkit-s3-oled-test`: scans GPIO11/GPIO12 for an I2C OLED at `0x3C`
+  or `0x3D`, initializes an SSD1306 128x32 panel, shows all-on/all-off frames
+  and then holds the Xiaozhi OLED status layout. It does not start audio, the
+  button, Wi-Fi or the normal application.
 - `fuji-devkit-s3-self-test`: runs the wired peripheral self-test before the
   normal application. Use only after the wiring gates above are complete.
 - `fuji-devkit-s3`: normal Xiaozhi application.

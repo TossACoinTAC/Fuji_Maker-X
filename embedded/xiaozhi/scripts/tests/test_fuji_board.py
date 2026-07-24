@@ -52,6 +52,7 @@ class FujiBoardConfigTests(unittest.TestCase):
                 "fuji-devkit-s3",
                 "fuji-devkit-s3-probe",
                 "fuji-devkit-s3-display-test",
+                "fuji-devkit-s3-oled-test",
                 "fuji-devkit-s3-self-test",
             },
         )
@@ -72,12 +73,34 @@ class FujiBoardConfigTests(unittest.TestCase):
     def test_display_test_stops_before_application_startup(self):
         main = (_PROJECT_ROOT / "main" / "main.cc").read_text(encoding="utf-8")
         display_branch = main.split("#elif CONFIG_BOARD_DISPLAY_TEST_ONLY", maxsplit=1)[1].split(
-            "#else", maxsplit=1
+            "#elif CONFIG_BOARD_OLED_TEST_ONLY", maxsplit=1
         )[0]
 
         self.assertIn("Board::GetInstance();", display_branch)
         self.assertIn("IdleForever();", display_branch)
         self.assertNotIn("Application::GetInstance()", display_branch)
+
+    def test_oled_test_stops_before_application_startup(self):
+        main = (_PROJECT_ROOT / "main" / "main.cc").read_text(encoding="utf-8")
+        oled_branch = main.split("#elif CONFIG_BOARD_OLED_TEST_ONLY", maxsplit=1)[1].split(
+            "#else", maxsplit=1
+        )[0]
+
+        self.assertIn("Board::GetInstance();", oled_branch)
+        self.assertIn("IdleForever();", oled_branch)
+        self.assertNotIn("Application::GetInstance()", oled_branch)
+
+    def test_oled_test_scans_i2c_and_uses_shared_display_pins(self):
+        config = (_BOARD_DIR / "config.h").read_text(encoding="utf-8")
+        source = (_BOARD_DIR / "fuji_devkit_s3.cc").read_text(encoding="utf-8")
+
+        self.assertIn("#define OLED_SDA_GPIO DISPLAY_MOSI_GPIO", config)
+        self.assertIn("#define OLED_SCL_GPIO DISPLAY_SCLK_GPIO", config)
+        self.assertIn("#define OLED_WIDTH 128", config)
+        self.assertIn("#define OLED_HEIGHT 32", config)
+        self.assertIn("i2c_master_probe", source)
+        self.assertIn("esp_lcd_new_panel_ssd1306", source)
+        self.assertIn("OLED all-pixels-on frame", source)
 
 
 if __name__ == "__main__":

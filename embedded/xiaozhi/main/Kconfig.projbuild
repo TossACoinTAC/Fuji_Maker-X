@@ -609,10 +609,19 @@ config BOARD_DISPLAY_TEST_ONLY
         Initialize only the ST7735S display, show solid test colors, then idle.
         No audio, button or Wi-Fi hardware is initialized.
 
+config BOARD_OLED_TEST_ONLY
+    bool "Fuji 0.91-inch OLED test only (no audio, button or network)"
+    default n
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY
+    help
+        Scan the display I2C bus, initialize a 128x32 SSD1306 OLED, show test
+        frames and the Xiaozhi OLED layout, then idle. No audio, button or
+        Wi-Fi hardware is initialized.
+
 config BOARD_HARDWARE_SELF_TEST
     bool "Run Fuji peripheral self-test before the application"
     default n
-    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY
     help
         Exercise the display, microphone and speaker before starting Xiaozhi.
         Only enable this after all modules have been wired and checked.

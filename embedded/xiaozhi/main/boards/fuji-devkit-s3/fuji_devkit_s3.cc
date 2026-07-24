@@ -7,8 +7,10 @@
 #include "codecs/no_audio_codec.h"
 #include "config.h"
 #include "display/lcd_display.h"
+#include "display/oled_display.h"
 
 #include <driver/gpio.h>
+#include <driver/i2c_master.h>
 #include <driver/spi_master.h>
 #include <esp_chip_info.h>
 #include <esp_flash.h>
@@ -16,6 +18,7 @@
 #include <esp_idf_version.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
+#include <esp_lcd_panel_ssd1306.h>
 #include <esp_log.h>
 #include <esp_system.h>
 #include <esp_lcd_st7735.h>
@@ -212,6 +215,7 @@ private:
     Display* display_ = nullptr;
     esp_lcd_panel_io_handle_t panel_io_ = nullptr;
     esp_lcd_panel_handle_t panel_ = nullptr;
+    i2c_master_bus_handle_t display_i2c_bus_ = nullptr;
     std::unique_ptr<Button> user_button_;
 
     FujiAudioCodec* GetFujiAudioCodec() {
@@ -258,6 +262,111 @@ private:
         ESP_LOGE(TAG, "display %s failed: %s; continuing without a display",
                  step, esp_err_to_name(result));
         return false;
+    }
+
+    int ScanOledAddress() {
+        int oled_address = -1;
+        int device_count = 0;
+        ESP_LOGI(TAG, "OLED I2C scan: SDA=%d SCL=%d", OLED_SDA_GPIO, OLED_SCL_GPIO);
+        for (uint8_t address = 0x08; address <= 0x77; ++address) {
+            const esp_err_t result = i2c_master_probe(display_i2c_bus_, address, 50);
+            if (result != ESP_OK) {
+                continue;
+            }
+
+            ++device_count;
+            ESP_LOGI(TAG, "I2C device found at 0x%02X", address);
+            if (oled_address < 0 &&
+                (address == OLED_PRIMARY_ADDRESS || address == OLED_ALTERNATE_ADDRESS)) {
+                oled_address = address;
+            }
+        }
+
+        if (device_count == 0) {
+            ESP_LOGE(TAG, "OLED I2C scan found no devices; check GND, 3V3, SCL and SDA");
+        } else if (oled_address < 0) {
+            ESP_LOGE(TAG, "I2C devices responded, but no OLED was found at 0x%02X or 0x%02X",
+                     OLED_PRIMARY_ADDRESS, OLED_ALTERNATE_ADDRESS);
+        }
+        return oled_address;
+    }
+
+    bool DrawOledFill(uint8_t value, const char* step) {
+        std::array<uint8_t, OLED_WIDTH * OLED_HEIGHT / 8> frame;
+        frame.fill(value);
+        return CheckDisplayStep(
+            esp_lcd_panel_draw_bitmap(panel_, 0, 0, OLED_WIDTH, OLED_HEIGHT, frame.data()),
+            step);
+    }
+
+    bool InitializeOledDisplay() {
+        i2c_master_bus_config_t bus_config = {};
+        bus_config.i2c_port = OLED_I2C_PORT;
+        bus_config.sda_io_num = OLED_SDA_GPIO;
+        bus_config.scl_io_num = OLED_SCL_GPIO;
+        bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+        bus_config.glitch_ignore_cnt = 7;
+        bus_config.flags.enable_internal_pullup = true;
+        if (!CheckDisplayStep(
+                i2c_new_master_bus(&bus_config, &display_i2c_bus_),
+                "OLED I2C bus setup")) {
+            return false;
+        }
+
+        const int address = ScanOledAddress();
+        if (address < 0) {
+            return false;
+        }
+
+        esp_lcd_panel_io_i2c_config_t io_config = {};
+        io_config.dev_addr = static_cast<uint32_t>(address);
+        io_config.scl_speed_hz = OLED_I2C_CLOCK_HZ;
+        io_config.control_phase_bytes = 1;
+        io_config.dc_bit_offset = 6;
+        io_config.lcd_cmd_bits = 8;
+        io_config.lcd_param_bits = 8;
+        if (!CheckDisplayStep(
+                esp_lcd_new_panel_io_i2c(display_i2c_bus_, &io_config, &panel_io_),
+                "OLED panel IO setup")) {
+            return false;
+        }
+
+        esp_lcd_panel_ssd1306_config_t ssd1306_config = {};
+        ssd1306_config.height = OLED_HEIGHT;
+        esp_lcd_panel_dev_config_t panel_config = {};
+        panel_config.reset_gpio_num = GPIO_NUM_NC;
+        panel_config.bits_per_pixel = 1;
+        panel_config.vendor_config = &ssd1306_config;
+        if (!CheckDisplayStep(
+                esp_lcd_new_panel_ssd1306(panel_io_, &panel_config, &panel_),
+                "SSD1306 driver setup") ||
+            !CheckDisplayStep(esp_lcd_panel_reset(panel_), "OLED reset") ||
+            !CheckDisplayStep(esp_lcd_panel_init(panel_), "OLED initialization") ||
+            !CheckDisplayStep(esp_lcd_panel_disp_on_off(panel_, true), "OLED power-on")) {
+            return false;
+        }
+
+        ESP_LOGI(TAG, "SSD1306 128x32 initialized at I2C address 0x%02X", address);
+        if (!DrawOledFill(0xFF, "OLED all-pixels-on frame")) {
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(700));
+        if (!DrawOledFill(0x00, "OLED all-pixels-off frame")) {
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(350));
+
+        display_ = new OledDisplay(
+            panel_io_, panel_, OLED_WIDTH, OLED_HEIGHT, OLED_MIRROR_X, OLED_MIRROR_Y);
+        if (display_ == nullptr) {
+            ESP_LOGE(TAG, "failed to allocate the OLED display interface");
+            return false;
+        }
+        display_->SetupUI();
+        display_->SetStatus("OLED OK");
+        display_->SetChatMessage("system", "I2C SSD1306 128x32");
+        ESP_LOGI(TAG, "OLED test is holding the 128x32 Xiaozhi status layout");
+        return true;
     }
 
     bool DrawSolidColor(uint16_t rgb565) {
@@ -382,15 +491,19 @@ public:
     FujiDevKitS3() {
         LogBoardProbe();
 #if !CONFIG_BOARD_PROBE_ONLY
-#if !CONFIG_BOARD_DISPLAY_TEST_ONLY
+#if !CONFIG_BOARD_DISPLAY_TEST_ONLY && !CONFIG_BOARD_OLED_TEST_ONLY
         InitializeAmpSafeState();
 #endif
+#if CONFIG_BOARD_OLED_TEST_ONLY
+        InitializeOledDisplay();
+#else
         if (InitializeDisplay()) {
 #if !CONFIG_BOARD_DISPLAY_TEST_ONLY
             GetBacklight()->RestoreBrightness();
 #endif
         }
-#if !CONFIG_BOARD_DISPLAY_TEST_ONLY
+#endif
+#if !CONFIG_BOARD_DISPLAY_TEST_ONLY && !CONFIG_BOARD_OLED_TEST_ONLY
         InitializeButton();
 #if CONFIG_BOARD_HARDWARE_SELF_TEST
         GetFujiAudioCodec()->RunSelfTest();
