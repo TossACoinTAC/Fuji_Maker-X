@@ -48,6 +48,7 @@
                 "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
                 "CONFIG_SPIRAM=y",
                 "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m_mic_capture.csv\"",
                 "CONFIG_BOARD_MIC_TEST_ONLY=y"
             ]
         },

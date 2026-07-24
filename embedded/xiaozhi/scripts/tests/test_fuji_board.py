@@ -23,11 +23,12 @@ class FujiBoardConfigTests(unittest.TestCase):
         self.assertEqual(
             assignments,
             {
-                "AUDIO_I2S_GPIO_BCLK": 17,
-                "AUDIO_I2S_GPIO_WS": 18,
+                "AUDIO_I2S_GPIO_BCLK": 18,
+                "AUDIO_I2S_GPIO_WS": 17,
                 "AUDIO_I2S_GPIO_DIN": 16,
                 "AUDIO_I2S_GPIO_DOUT": 15,
                 "AUDIO_AMP_ENABLE_GPIO": 8,
+                "MIC_TEST_START_GPIO": 0,
                 "DISPLAY_MOSI_GPIO": 11,
                 "DISPLAY_SCLK_GPIO": 12,
                 "DISPLAY_CS_GPIO": 10,
@@ -135,8 +136,30 @@ class FujiBoardConfigTests(unittest.TestCase):
         self.assertIn("i2s_new_channel(&channel_config, nullptr, &rx_handle)", mic_test)
         self.assertIn(".dout = I2S_GPIO_UNUSED", mic_test)
         self.assertIn("AUDIO_I2S_GPIO_DIN", mic_test)
+        self.assertIn("native_sample = raw_sample >> 16", mic_test)
+        self.assertIn("xiaozhi_sample = raw_sample >> 12", mic_test)
+        self.assertIn("MIC QUIET", mic_test)
+        self.assertIn("MIC SPEAK", mic_test)
+        self.assertIn("MIC CLAP", mic_test)
+        self.assertIn("response_ratio", mic_test)
+        self.assertIn('"mic_capture"', mic_test)
+        self.assertIn("WAV ready", mic_test)
         self.assertNotIn("EnableOutput", mic_test)
         self.assertNotIn("OutputData", mic_test)
+
+    def test_mic_test_has_a_dedicated_capture_partition(self):
+        config = json.loads((_BOARD_DIR / "config.json").read_text(encoding="utf-8"))
+        mic_test = next(build for build in config["builds"] if build["name"].endswith("-mic-test"))
+
+        self.assertIn(
+            'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/v2/16m_mic_capture.csv"',
+            mic_test["sdkconfig_append"],
+        )
+        partition_table = (_PROJECT_ROOT / "partitions/v2/16m_mic_capture.csv").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("mic_capture", partition_table)
+        self.assertIn("0xf00000", partition_table.lower())
 
 
 if __name__ == "__main__":

@@ -52,16 +52,16 @@ before the display test.
 | ST7735S | DC | GPIO13 | Data/command |
 | ST7735S | CS | GPIO10 | Chip select |
 | ST7735S | BLK | GPIO9 | PWM backlight |
-| INMP441 | VDD | 3V3 | |
-| INMP441 | GND | GND | Common ground |
-| INMP441 | SCK | GPIO17 | Shared I2S BCLK |
-| INMP441 | WS | GPIO18 | Shared I2S word select |
-| INMP441 | SD | GPIO16 | Microphone data to ESP32 |
-| INMP441 | L/R | GND | Select left channel |
+| I2S microphone | VDD | 3V3 | Exact chip marking not yet confirmed |
+| I2S microphone | GND | GND | Common ground |
+| I2S microphone | SCK | GPIO18 | Shared I2S BCLK |
+| I2S microphone | WS | GPIO17 | Shared I2S word select |
+| I2S microphone | SD | GPIO16 | Microphone data to ESP32 |
+| I2S microphone | L/R | GND | Select left channel |
 | MAX98357A | VIN | 5V | USB power only for first tests |
 | MAX98357A | GND | GND | Common ground |
-| MAX98357A | BCLK | GPIO17 | Shared I2S BCLK |
-| MAX98357A | LRC | GPIO18 | Shared I2S word select |
+| MAX98357A | BCLK | GPIO18 | Shared I2S BCLK |
+| MAX98357A | LRC | GPIO17 | Shared I2S word select |
 | MAX98357A | DIN | GPIO15 | Audio data from ESP32 |
 | MAX98357A | SD | GPIO8 | Software amplifier enable |
 | MAX98357A | GAIN | GND | Initial low-gain setting |
@@ -89,9 +89,11 @@ path does not become coupled to the normal application lifecycle.
   and then holds the Xiaozhi OLED status layout. It does not start audio, the
   button, Wi-Fi or the normal application.
 - `fuji-devkit-s3-mic-test`: keeps the verified OLED active, holds GPIO8 low
-  and captures only the INMP441 RX path on GPIO16/17/18. GPIO15 remains unused;
-  the test reports 8 seconds of peak/RMS levels without starting the speaker,
-  button, Wi-Fi or the normal application.
+  and captures only the I2S microphone RX path on GPIO16/17/18. GPIO15 remains
+  unused; after the built-in BOOT button is pressed, the test guides a
+  quiet/speech/clap sequence, reports native signal levels plus upstream scaling
+  diagnostics and writes a 16 kHz mono WAV to its dedicated `mic_capture`
+  partition. It does not start the speaker, user button, Wi-Fi or normal app.
 - `fuji-devkit-s3-self-test`: runs the wired peripheral self-test before the
   normal application. Use only after the wiring gates above are complete.
 - `fuji-devkit-s3`: normal Xiaozhi application.

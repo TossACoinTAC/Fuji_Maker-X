@@ -5,15 +5,16 @@
 #include <driver/i2c_master.h>
 #include <driver/spi_master.h>
 
-// Audio: INMP441 input and MAX98357A output share BCLK/WS.
+// Audio: the I2S microphone and MAX98357A output share BCLK/WS.
 #define AUDIO_INPUT_SAMPLE_RATE 16000
 #define AUDIO_OUTPUT_SAMPLE_RATE 24000
-#define AUDIO_I2S_GPIO_BCLK GPIO_NUM_17
-#define AUDIO_I2S_GPIO_WS GPIO_NUM_18
+#define AUDIO_I2S_GPIO_BCLK GPIO_NUM_18
+#define AUDIO_I2S_GPIO_WS GPIO_NUM_17
 #define AUDIO_I2S_GPIO_DIN GPIO_NUM_16
 #define AUDIO_I2S_GPIO_DOUT GPIO_NUM_15
 #define AUDIO_AMP_ENABLE_GPIO GPIO_NUM_8
 #define AUDIO_SELF_TEST_VOLUME 10
+#define MIC_TEST_START_GPIO GPIO_NUM_0
 
 // ST7735S 128x128 SPI display.
 #define DISPLAY_SPI_HOST SPI2_HOST
