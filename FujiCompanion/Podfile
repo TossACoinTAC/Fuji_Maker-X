@@ -1,0 +1,25 @@
+platform :ios, '18.0'
+
+project 'FujiCompanion.xcodeproj'
+
+target 'FujiCompanion' do
+  use_frameworks! :linkage => :static
+
+  pod 'AMapSearch-NO-IDFA', '9.8.0'
+
+  target 'FujiCompanionTests' do
+    inherit! :search_paths
+  end
+
+  target 'FujiCompanionUITests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
+    end
+  end
+end
