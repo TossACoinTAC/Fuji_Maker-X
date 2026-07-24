@@ -28,6 +28,11 @@ Boya Quad Flash device and 8 MiB AP Octal PSRAM. The fixed probe starts once,
 reports those values and remains idle without opening NVS or starting the
 network or peripherals.
 
+The temporary 0.91-inch OLED was verified on 2026-07-24. It responded at I2C
+address `0x3C` on GPIO11/GPIO12, initialized as an SSD1306 128x32 panel and
+displayed the all-on, all-off and final Xiaozhi status frames without a reset or
+visible rendering fault.
+
 The photographed display PCB is marked `1.44-128X128 RGB-TFT` and
 `Driver IC: ST7735S`. Its eight through-holes are not populated with a pin
 header. Do not power the display using loose jumper pins inserted into those
