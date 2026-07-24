@@ -1,17 +1,19 @@
-//
-//  FujiCompanionApp.swift
-//  FujiCompanion
-//
-//  Created by Apple on 2026/07/25.
-//
-
 import SwiftUI
 
 @main
 struct FujiCompanionApp: App {
+    @State private var model: FujiAppModel
+
+    init() {
+        _model = State(initialValue: FujiAppModel(environment: .live()))
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(model: model)
+                .task {
+                    model.start()
+                }
         }
     }
 }
