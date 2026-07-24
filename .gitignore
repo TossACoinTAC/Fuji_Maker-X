@@ -16,6 +16,15 @@ __pycache__/
 AGENT.md
 CLAUDE.md
 
+# Xcode / CocoaPods
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+Pods/
+Secrets.xcconfig
+
 # OS
 .DS_Store
 Thumbs.db

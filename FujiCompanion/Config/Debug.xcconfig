@@ -1,0 +1,4 @@
+#include? "../Pods/Target Support Files/Pods-FujiCompanion/Pods-FujiCompanion.debug.xcconfig"
+#include? "Secrets.xcconfig"
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) DEBUG
