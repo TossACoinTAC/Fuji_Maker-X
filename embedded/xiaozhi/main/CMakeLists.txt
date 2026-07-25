@@ -100,6 +100,11 @@ elseif(CONFIG_BOARD_TYPE_FUJI_DEVKIT_S3)
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_14_1)
     set(BUILTIN_ICON_FONT font_material_symbols_14_1)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_32)
+elseif(CONFIG_BOARD_TYPE_FUJI_WAVESHARE_1P46)
+    set(BOARD_TYPE "fuji-waveshare-1p46")
+    set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
+    set(BUILTIN_ICON_FONT font_material_symbols_20_4)
+    set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_128)
 elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_ML307)
     set(BOARD_TYPE "bread-compact-ml307")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_14_1)
@@ -881,17 +886,20 @@ elseif(CONFIG_BOARD_TYPE_LCDWIKI_ES3C35P)
 endif()
 
 if(MANUFACTURER)
+    set(BOARD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/boards/${MANUFACTURER}/${BOARD_TYPE})
     file(GLOB BOARD_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${MANUFACTURER}/${BOARD_TYPE}/*.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${MANUFACTURER}/${BOARD_TYPE}/*.c
+        ${BOARD_DIR}/*.cc
+        ${BOARD_DIR}/*.c
     )
 else()
+    set(BOARD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE})
     file(GLOB BOARD_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*.c
+        ${BOARD_DIR}/*.cc
+        ${BOARD_DIR}/*.c
     )
 endif()
 list(APPEND SOURCES ${BOARD_SOURCES})
+list(APPEND INCLUDE_DIRS ${BOARD_DIR})
 
 # Select one audio engine for each chip family
 if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4)

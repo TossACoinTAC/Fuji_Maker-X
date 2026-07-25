@@ -84,7 +84,7 @@ class FujiBoardConfigTests(unittest.TestCase):
             "#elif CONFIG_BOARD_DISPLAY_TEST_ONLY", maxsplit=1
         )[0]
 
-        self.assertIn("RunFujiDevKitS3BoardProbe();", probe_branch)
+        self.assertIn("RunBoardProbe();", probe_branch)
         self.assertNotIn("Board::GetInstance()", probe_branch)
         self.assertNotIn("nvs_flash_init()", probe_branch)
 
@@ -111,7 +111,7 @@ class FujiBoardConfigTests(unittest.TestCase):
     def test_mic_test_stops_before_application_startup(self):
         main = (_PROJECT_ROOT / "main" / "main.cc").read_text(encoding="utf-8")
         mic_branch = main.split("#elif CONFIG_BOARD_MIC_TEST_ONLY", maxsplit=1)[1].split(
-            "#else", maxsplit=1
+            "#elif CONFIG_BOARD_SPEAKER_TEST_ONLY", maxsplit=1
         )[0]
 
         self.assertIn("Board::GetInstance();", mic_branch)

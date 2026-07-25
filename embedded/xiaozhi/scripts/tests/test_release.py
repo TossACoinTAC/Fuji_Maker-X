@@ -26,7 +26,7 @@ class VersionTests(unittest.TestCase):
         idf5 = release._collect_variants(idf_version=(5, 5, 4))
         idf6 = release._collect_variants(idf_version=(6, 0, 2))
         self.assertEqual(len(idf5), 172)
-        self.assertEqual(len(idf6), 164)
+        self.assertEqual(len(idf6), 169)
         for variants in (idf5, idf6):
             names = [variant["full_name"] for variant in variants]
             self.assertEqual(len(names), len(set(names)))
@@ -47,6 +47,16 @@ class VersionTests(unittest.TestCase):
                 "fuji-devkit-s3-oled-test",
                 "fuji-devkit-s3-probe",
                 "fuji-devkit-s3-self-test",
+            ],
+        )
+        self.assertEqual(
+            sorted(item["name"] for item in current if item["board"] == "fuji-waveshare-1p46"),
+            [
+                "fuji-waveshare-1p46",
+                "fuji-waveshare-1p46-display-test",
+                "fuji-waveshare-1p46-mic-test",
+                "fuji-waveshare-1p46-probe",
+                "fuji-waveshare-1p46-speaker-test",
             ],
         )
 
@@ -88,6 +98,28 @@ class BuildDirectoryTests(unittest.TestCase):
             self.assertIn("CONFIG_SPIRAM=y", contents)
             self.assertIn("CONFIG_FOO=y", contents)
             self.assertNotIn("# CONFIG_FOO is not set", contents)
+
+    def test_sdkconfig_overrides_replace_board_selection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sdkconfig = Path(temp_dir) / "sdkconfig"
+            sdkconfig.write_text(
+                "CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI=y\n"
+                "# CONFIG_BOARD_TYPE_FUJI_DEVKIT_S3 is not set\n",
+                encoding="utf-8",
+            )
+            release._apply_sdkconfig_overrides(
+                sdkconfig,
+                ["CONFIG_BOARD_TYPE_FUJI_WAVESHARE_1P46=y"],
+            )
+            board_lines = [
+                line
+                for line in sdkconfig.read_text(encoding="utf-8").splitlines()
+                if line.startswith("CONFIG_BOARD_TYPE_")
+            ]
+            self.assertEqual(
+                board_lines,
+                ["CONFIG_BOARD_TYPE_FUJI_WAVESHARE_1P46=y"],
+            )
 
 
 class BoardSelectionTests(unittest.TestCase):

@@ -101,9 +101,15 @@ def _apply_sdkconfig_overrides(sdkconfig: Path, entries: list[str]) -> None:
     """Replace variant-owned keys without accumulating duplicate assignments."""
     original = sdkconfig.read_text(encoding="utf-8") if sdkconfig.exists() else ""
     keys = {entry.partition("=")[0] for entry in entries}
+    owns_board_selection = any(key.startswith("CONFIG_BOARD_TYPE_") for key in keys)
     kept_lines = []
     for line in original.splitlines():
         if line == "# Variant overrides from release.py":
+            continue
+        if owns_board_selection and (
+            line.startswith("CONFIG_BOARD_TYPE_")
+            or (line.startswith("# CONFIG_BOARD_TYPE_") and line.endswith(" is not set"))
+        ):
             continue
         if any(
             line.startswith(f"{key}=") or line == f"# {key} is not set"

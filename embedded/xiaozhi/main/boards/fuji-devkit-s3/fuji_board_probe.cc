@@ -36,7 +36,7 @@ const char* ResetReasonName(esp_reset_reason_t reason) {
 
 }  // namespace
 
-void RunFujiDevKitS3BoardProbe() {
+void RunBoardProbe() {
     esp_chip_info_t chip_info = {};
     esp_chip_info(&chip_info);
 
