@@ -17,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #define TAG "FujiWsSpkTest"
@@ -26,6 +27,12 @@ namespace {
 constexpr int kSpeakerTestSampleRate = 16000;
 constexpr int kOpusFrameDurationMs = 60;
 constexpr int32_t kLowDigitalGain = 2048;
+constexpr uint32_t kSpeakerTaskStackSize = 32 * 1024;
+
+void LogStack(const char* stage) {
+    ESP_LOGI(TAG, "%s; minimum remaining stack=%u bytes", stage,
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+}
 
 void Show(Display* display, const char* status, const char* message) {
     if (display != nullptr) {
@@ -115,8 +122,8 @@ bool PlayWelcomeSpeech(i2s_chan_handle_t tx, Display* display) {
 
     bool decoded = true;
     size_t packets = 0;
-    OggDemuxer demuxer;
-    demuxer.OnDemuxerFinished([&](const uint8_t* data, int sample_rate, size_t size) {
+    auto demuxer = std::make_unique<OggDemuxer>();
+    demuxer->OnDemuxerFinished([&](const uint8_t* data, int sample_rate, size_t size) {
         if (!decoded || sample_rate != kSpeakerTestSampleRate) {
             decoded = false;
             return;
@@ -144,27 +151,29 @@ bool PlayWelcomeSpeech(i2s_chan_handle_t tx, Display* display) {
         decoded = WritePcm(tx, pcm.data(), output.decoded_size / sizeof(int16_t), display);
     });
     const auto ogg = Lang::Sounds::OGG_WELCOME;
-    demuxer.Process(reinterpret_cast<const uint8_t*>(ogg.data()), ogg.size());
+    demuxer->Process(reinterpret_cast<const uint8_t*>(ogg.data()), ogg.size());
     esp_opus_dec_close(decoder);
     ESP_LOGI(TAG, "welcome speech packets decoded=%zu result=%s", packets,
              decoded ? "ok" : "failed");
     return decoded && packets != 0;
 }
 
-}  // namespace
-
-bool RunWaveshareSpeakerTest(Display* display) {
+void SpeakerTestTask(void* argument) {
+    auto* display = static_cast<Display*>(argument);
     ESP_LOGI(TAG, "TX-only test: port=0 BCLK=%d LRCK=%d DOUT=%d slot=left; microphone unused",
              AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT);
     if (!WaitForBoot(display)) {
-        return false;
+        vTaskDelete(nullptr);
+        return;
     }
+    LogStack("BOOT accepted");
 
     i2s_chan_handle_t tx = nullptr;
     i2s_chan_config_t channel_config =
         I2S_CHANNEL_DEFAULT_CONFIG(XIAOZHI_I2S_PORT(0), I2S_ROLE_MASTER);
     if (!Check(i2s_new_channel(&channel_config, &tx, nullptr), "I2S TX create", display)) {
-        return false;
+        vTaskDelete(nullptr);
+        return;
     }
     i2s_std_config_t config = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(kSpeakerTestSampleRate),
@@ -184,20 +193,38 @@ bool RunWaveshareSpeakerTest(Display* display) {
     if (!Check(i2s_channel_init_std_mode(tx, &config), "I2S TX init", display) ||
         !Check(i2s_channel_enable(tx), "I2S TX enable", display)) {
         i2s_del_channel(tx);
-        return false;
+        vTaskDelete(nullptr);
+        return;
     }
 
     Show(display, "SPK TONE", "low-volume prompt");
-    const bool played =
-        WriteSilence(tx, 300, display) && PlayPromptTone(tx, display) &&
-        WriteSilence(tx, 300, display) &&
-        (Show(display, "SPK VOICE", "low-volume speech"), PlayWelcomeSpeech(tx, display)) &&
-        WriteSilence(tx, 500, display);
+    bool played = WriteSilence(tx, 300, display) && PlayPromptTone(tx, display) &&
+                  WriteSilence(tx, 300, display);
+    LogStack("prompt tone finished");
+    if (played) {
+        Show(display, "SPK VOICE", "low-volume speech");
+        LogStack("starting welcome speech");
+        played = PlayWelcomeSpeech(tx, display) && WriteSilence(tx, 500, display);
+        LogStack("welcome speech finished");
+    }
     Check(i2s_channel_disable(tx), "I2S TX disable", display);
     Check(i2s_del_channel(tx), "I2S TX delete", display);
     if (played) {
         ESP_LOGI(TAG, "speaker test finished; output channel disabled and silent");
         Show(display, "SPK DONE", "check noise and distortion");
     }
-    return played;
+    vTaskDelete(nullptr);
+}
+
+}  // namespace
+
+bool RunWaveshareSpeakerTest(Display* display) {
+    const BaseType_t result =
+        xTaskCreate(SpeakerTestTask, "speaker_test", kSpeakerTaskStackSize, display, 5, nullptr);
+    if (result != pdPASS) {
+        ESP_LOGE(TAG, "speaker test task creation failed");
+        Show(display, "SPK ERROR", "task creation failed");
+        return false;
+    }
+    return true;
 }

@@ -65,11 +65,14 @@ bool WavesharePeripherals::ScanI2cBus() {
             ESP_LOGI(TAG, "%s responded at 0x%02X", expected.name, expected.address);
         }
     }
-    if (!found[TCA9554_I2C_ADDRESS] || !found[TOUCH_I2C_ADDRESS]) {
-        ESP_LOGE(TAG, "required display devices missing: TCA9554=%s touch=%s",
-                 found[TCA9554_I2C_ADDRESS] ? "yes" : "no",
-                 found[TOUCH_I2C_ADDRESS] ? "yes" : "no");
+    if (!found[TCA9554_I2C_ADDRESS]) {
+        ESP_LOGE(TAG, "required TCA9554 missing at 0x%02X", TCA9554_I2C_ADDRESS);
         return false;
+    }
+    if (!found[TOUCH_I2C_ADDRESS]) {
+        ESP_LOGW(TAG,
+                 "SPD2010 touch did not respond before panel reset; touch initialization will "
+                 "retry after the display reset");
     }
     if (!found[RTC_I2C_ADDRESS]) {
         ESP_LOGW(TAG, "PCF85063 did not respond at 0x%02X", RTC_I2C_ADDRESS);
@@ -92,19 +95,22 @@ bool WavesharePeripherals::Initialize() {
     if (!CheckStep(i2c_new_master_bus(&bus_config, &i2c_bus_), "I2C bus setup")) {
         return false;
     }
-    if (!ScanI2cBus()) {
-        return false;
-    }
     if (!CheckStep(esp_io_expander_new_i2c_tca9554(i2c_bus_, TCA9554_I2C_ADDRESS, &io_expander_),
                    "TCA9554 setup")) {
         return false;
     }
 
     const uint32_t reset_pins = TOUCH_RESET_EXPANDER_PIN | DISPLAY_RESET_EXPANDER_PIN;
-    return CheckStep(esp_io_expander_set_dir(io_expander_, reset_pins, IO_EXPANDER_OUTPUT),
-                     "TCA9554 reset pin direction") &&
-           CheckStep(esp_io_expander_set_level(io_expander_, reset_pins, 1),
-                     "TCA9554 reset pin idle level");
+    if (!CheckStep(esp_io_expander_set_dir(io_expander_, reset_pins, IO_EXPANDER_OUTPUT),
+                   "TCA9554 reset pin direction") ||
+        !CheckStep(esp_io_expander_set_level(io_expander_, reset_pins, 1),
+                   "TCA9554 reset pin idle level")) {
+        return false;
+    }
+
+    // The touch controller is not guaranteed to acknowledge I2C until its
+    // dedicated expander reset has completed after a cold boot.
+    return ResetTouch() && ScanI2cBus();
 }
 
 bool WavesharePeripherals::ResetExpanderLine(uint32_t pin_mask, const char* name) {
