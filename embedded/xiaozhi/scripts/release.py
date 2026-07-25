@@ -9,15 +9,33 @@ from pathlib import Path
 from typing import Optional
 
 # Switch to project root directory
-os.chdir(Path(__file__).resolve().parent.parent)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_EXTERNAL_BUILD_ROOT = Path("/Volumes/Mac_DiskExtension/EmbeddedCache/Maker-X/xiaozhi")
+os.chdir(_PROJECT_ROOT)
 
 ################################################################################
 # Common utility functions
 ################################################################################
 
-def get_board_type_from_compile_commands() -> Optional[str]:
-    """Parse the current compiled BOARD_TYPE from build/compile_commands.json"""
-    compile_file = Path("build/compile_commands.json")
+def _resolve_build_root(explicit: Optional[str] = None) -> Path:
+    """Resolve the build root without requiring the external disk."""
+    if explicit:
+        return Path(explicit).expanduser()
+    configured = os.environ.get("XIAOZHI_BUILD_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    if _EXTERNAL_BUILD_ROOT.parent.parent.parent.is_dir():
+        return _EXTERNAL_BUILD_ROOT
+    return Path("build")
+
+
+def _variant_build_dir(build_root: Path, final_name: str) -> Path:
+    return build_root / final_name
+
+
+def get_board_type_from_compile_commands(build_dir: Path = Path("build")) -> Optional[str]:
+    """Parse the compiled BOARD_TYPE from a build directory."""
+    compile_file = build_dir / "compile_commands.json"
     if not compile_file.exists():
         return None
     with compile_file.open(encoding='utf-8') as f:
@@ -40,14 +58,22 @@ def get_project_version() -> Optional[str]:
     return None
 
 
-def merge_bin() -> None:
-    if os.system("idf.py merge-bin") != 0:
+def _run_idf(build_dir: Path, *args: str, sdkconfig: Optional[Path] = None) -> int:
+    command = ["idf.py", "-B", str(build_dir)]
+    if sdkconfig is not None:
+        command.append(f"-DSDKCONFIG={sdkconfig}")
+    command.extend(args)
+    return subprocess.run(command, check=False).returncode
+
+
+def merge_bin(build_dir: Path = Path("build"), sdkconfig: Optional[Path] = None) -> None:
+    if _run_idf(build_dir, "merge-bin", sdkconfig=sdkconfig) != 0:
         print("merge-bin failed", file=sys.stderr)
         sys.exit(1)
 
 
-def zip_bin(name: str, version: str) -> None:
-    """Zip build/merged-binary.bin to releases/v{version}_{name}.zip"""
+def zip_bin(name: str, version: str, build_dir: Path = Path("build")) -> None:
+    """Zip merged-binary.bin to releases/v{version}_{name}.zip."""
     out_dir = Path("releases")
     out_dir.mkdir(exist_ok=True)
     output_path = out_dir / f"v{version}_{name}.zip"
@@ -56,8 +82,44 @@ def zip_bin(name: str, version: str) -> None:
         output_path.unlink()
 
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write("build/merged-binary.bin", arcname="merged-binary.bin")
+        zipf.write(build_dir / "merged-binary.bin", arcname="merged-binary.bin")
     print(f"zip bin to {output_path} done")
+
+
+def _sdkconfig_target(sdkconfig: Path) -> Optional[str]:
+    if not sdkconfig.exists():
+        return None
+    match = re.search(
+        r'^CONFIG_IDF_TARGET="([^"]+)"$',
+        sdkconfig.read_text(encoding="utf-8"),
+        flags=re.MULTILINE,
+    )
+    return match.group(1) if match else None
+
+
+def _apply_sdkconfig_overrides(sdkconfig: Path, entries: list[str]) -> None:
+    """Replace variant-owned keys without accumulating duplicate assignments."""
+    original = sdkconfig.read_text(encoding="utf-8") if sdkconfig.exists() else ""
+    keys = {entry.partition("=")[0] for entry in entries}
+    kept_lines = []
+    for line in original.splitlines():
+        if line == "# Variant overrides from release.py":
+            continue
+        if any(
+            line.startswith(f"{key}=") or line == f"# {key} is not set"
+            for key in keys
+        ):
+            continue
+        kept_lines.append(line)
+    updated = "\n".join(kept_lines).rstrip()
+    if updated:
+        updated += "\n"
+    updated += "\n# Variant overrides from release.py\n"
+    updated += "\n".join(entries) + "\n"
+    if updated != original:
+        sdkconfig.parent.mkdir(parents=True, exist_ok=True)
+        sdkconfig.write_text(updated, encoding="utf-8")
+
 
 def _get_manufacturer(cfg: dict) -> Optional[str]:
     """Read manufacturer from config.json"""
@@ -428,6 +490,7 @@ def release(
     *,
     filter_name: Optional[str] = None,
     idf_version: tuple[int, int, int] = (6, 0, 0),
+    build_root: Path = Path("build"),
 ) -> None:
     """Compile and package all/specified variants of the specified board_type
 
@@ -464,6 +527,8 @@ def release(
             raise ValueError(f"build.name {name} must contain {board_leaf}")
         
         final_name = f"{manufacturer}-{name}" if manufacturer else name
+        build_dir = _variant_build_dir(build_root, final_name).resolve()
+        sdkconfig = build_dir / "sdkconfig"
         output_path = Path("releases") / f"v{project_version}_{final_name}.zip"
         if output_path.exists():
             print(f"Skipping {final_name} because {output_path} already exists")
@@ -494,27 +559,29 @@ def release(
 
         os.environ.pop("IDF_TARGET", None)
 
-        # Call set-target
-        if os.system(f"idf.py set-target {target}") != 0:
+        build_dir.mkdir(parents=True, exist_ok=True)
+        if _sdkconfig_target(sdkconfig) != target and _run_idf(
+            build_dir,
+            "set-target",
+            target,
+            sdkconfig=sdkconfig,
+        ) != 0:
             print("set-target failed", file=sys.stderr)
             sys.exit(1)
 
-        # Append sdkconfig
-        with Path("sdkconfig").open("a", encoding='utf-8') as f:
-            f.write("\n")
-            f.write("# Append by release.py\n")
-            for append in sdkconfig_append:
-                f.write(f"{append}\n")
-        # Build with macro BOARD_NAME defined to name
-        if os.system(f"idf.py -DBOARD_NAME={name} -DBOARD_TYPE={board_type} build") != 0:
+        _apply_sdkconfig_overrides(sdkconfig, sdkconfig_append)
+        if _run_idf(
+            build_dir,
+            f"-DBOARD_NAME={name}",
+            f"-DBOARD_TYPE={board_type}",
+            "build",
+            sdkconfig=sdkconfig,
+        ) != 0:
             print("build failed")
             sys.exit(1)
 
-        # merge-bin
-        merge_bin()
-
-        # Zip
-        zip_bin(final_name, project_version)
+        merge_bin(build_dir, sdkconfig)
+        zip_bin(final_name, project_version, build_dir)
 
 ################################################################################
 # CLI entry
@@ -527,6 +594,13 @@ if __name__ == "__main__":
     parser.add_argument("--list-boards", action="store_true", help="List all supported boards and variants")
     parser.add_argument("--json", action="store_true", help="Output in JSON format (use with --list-boards)")
     parser.add_argument("--name", help="Variant name to compile (original name without manufacturer prefix)")
+    parser.add_argument(
+        "--build-root",
+        help=(
+            "Root for isolated variant build directories; defaults to XIAOZHI_BUILD_ROOT, "
+            "/Volumes/Mac_DiskExtension when mounted, then ./build"
+        ),
+    )
     parser.add_argument(
         "--select-changed",
         action="store_true",
@@ -554,13 +628,14 @@ if __name__ == "__main__":
 
     # Current directory firmware packaging mode
     if args.board is None:
-        merge_bin()
-        curr_board_type = get_board_type_from_compile_commands()
+        current_build_dir = Path(args.build_root).expanduser() if args.build_root else Path("build")
+        merge_bin(current_build_dir)
+        curr_board_type = get_board_type_from_compile_commands(current_build_dir)
         if curr_board_type is None:
             print("Failed to parse board_type from compile_commands.json", file=sys.stderr)
             sys.exit(1)
         project_ver = get_project_version()
-        zip_bin(curr_board_type, project_ver)
+        zip_bin(curr_board_type, project_ver, current_build_dir)
         sys.exit(0)
 
     # Compile mode
@@ -573,6 +648,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     variants_all = _collect_variants(config_filename=args.config, idf_version=idf_version)
+    build_root = _resolve_build_root(args.build_root)
 
     # Filter board_type list
     target_board_types: set[str]
@@ -594,4 +670,5 @@ if __name__ == "__main__":
             config_filename=args.config,
             filter_name=name_filter if bt == board_type_input else None,
             idf_version=idf_version,
+            build_root=build_root,
         )
