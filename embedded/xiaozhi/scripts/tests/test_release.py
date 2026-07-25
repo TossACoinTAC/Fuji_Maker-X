@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,6 +49,45 @@ class VersionTests(unittest.TestCase):
                 "fuji-devkit-s3-self-test",
             ],
         )
+
+
+class BuildDirectoryTests(unittest.TestCase):
+    def test_explicit_build_root_has_priority(self):
+        with mock.patch.dict(os.environ, {"XIAOZHI_BUILD_ROOT": "/env/cache"}):
+            self.assertEqual(release._resolve_build_root("~/explicit").name, "explicit")
+
+    def test_environment_build_root(self):
+        with mock.patch.dict(os.environ, {"XIAOZHI_BUILD_ROOT": "/env/cache"}):
+            self.assertEqual(release._resolve_build_root(), Path("/env/cache"))
+
+    def test_fallback_build_root(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch.object(Path, "is_dir", return_value=False):
+                self.assertEqual(release._resolve_build_root(), Path("build"))
+
+    def test_variant_build_directories_are_isolated(self):
+        root = Path("/cache")
+        self.assertEqual(
+            release._variant_build_dir(root, "fuji-waveshare-1p46-probe"),
+            Path("/cache/fuji-waveshare-1p46-probe"),
+        )
+
+    def test_sdkconfig_overrides_replace_existing_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sdkconfig = Path(temp_dir) / "sdkconfig"
+            sdkconfig.write_text(
+                "CONFIG_IDF_TARGET=\"esp32s3\"\nCONFIG_SPIRAM=n\n# CONFIG_FOO is not set\n",
+                encoding="utf-8",
+            )
+            release._apply_sdkconfig_overrides(
+                sdkconfig,
+                ["CONFIG_SPIRAM=y", "CONFIG_FOO=y"],
+            )
+            contents = sdkconfig.read_text(encoding="utf-8")
+            self.assertEqual(contents.count("CONFIG_SPIRAM="), 1)
+            self.assertIn("CONFIG_SPIRAM=y", contents)
+            self.assertIn("CONFIG_FOO=y", contents)
+            self.assertNotIn("# CONFIG_FOO is not set", contents)
 
 
 class BoardSelectionTests(unittest.TestCase):
