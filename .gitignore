@@ -1,7 +1,7 @@
-# PlatformIO
-.pio/
-.pioenvs/
-.piolibdeps/
+# ESP-IDF
+sdkconfig
+sdkconfig.old
+managed_components/
 
 # Python virtual environment / toolchain
 .venv/

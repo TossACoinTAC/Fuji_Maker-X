@@ -1,0 +1,55 @@
+#ifndef FUJI_DEVKIT_S3_CONFIG_H
+#define FUJI_DEVKIT_S3_CONFIG_H
+
+#include <driver/gpio.h>
+#include <driver/i2c_master.h>
+#include <driver/spi_master.h>
+
+// Audio: the I2S microphone and MAX98357A output share BCLK/WS.
+#define AUDIO_INPUT_SAMPLE_RATE 16000
+#define AUDIO_OUTPUT_SAMPLE_RATE 24000
+#define AUDIO_I2S_GPIO_BCLK GPIO_NUM_18
+#define AUDIO_I2S_GPIO_WS GPIO_NUM_17
+#define AUDIO_I2S_GPIO_DIN GPIO_NUM_16
+#define AUDIO_I2S_GPIO_DOUT GPIO_NUM_15
+#define AUDIO_AMP_ENABLE_GPIO GPIO_NUM_8
+#define AUDIO_SELF_TEST_VOLUME 10
+#define MIC_TEST_START_GPIO GPIO_NUM_0
+
+// ST7735S 128x128 SPI display.
+#define DISPLAY_SPI_HOST SPI2_HOST
+#define DISPLAY_MOSI_GPIO GPIO_NUM_11
+#define DISPLAY_SCLK_GPIO GPIO_NUM_12
+#define DISPLAY_CS_GPIO GPIO_NUM_10
+#define DISPLAY_DC_GPIO GPIO_NUM_13
+#define DISPLAY_RESET_GPIO GPIO_NUM_14
+#define DISPLAY_BACKLIGHT_GPIO GPIO_NUM_9
+#define DISPLAY_WIDTH 128
+#define DISPLAY_HEIGHT 128
+#define DISPLAY_OFFSET_X 2
+#define DISPLAY_OFFSET_Y 3
+#define DISPLAY_SPI_CLOCK_HZ (20 * 1000 * 1000)
+#define DISPLAY_SPI_MODE 0
+#define DISPLAY_MIRROR_X false
+#define DISPLAY_MIRROR_Y false
+#define DISPLAY_SWAP_XY false
+#define DISPLAY_INVERT_COLOR true
+#define DISPLAY_RGB_ORDER LCD_RGB_ELEMENT_ORDER_BGR
+#define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
+
+// Temporary 0.91-inch 128x32 OLED. It reuses the SPI display data/clock pins.
+#define OLED_I2C_PORT I2C_NUM_0
+#define OLED_SDA_GPIO DISPLAY_MOSI_GPIO
+#define OLED_SCL_GPIO DISPLAY_SCLK_GPIO
+#define OLED_I2C_CLOCK_HZ (400 * 1000)
+#define OLED_PRIMARY_ADDRESS 0x3C
+#define OLED_ALTERNATE_ADDRESS 0x3D
+#define OLED_WIDTH 128
+#define OLED_HEIGHT 32
+#define OLED_MIRROR_X false
+#define OLED_MIRROR_Y false
+
+// External active-low push button. The ESP-IDF button component enables pull-up.
+#define USER_BUTTON_GPIO GPIO_NUM_4
+
+#endif  // FUJI_DEVKIT_S3_CONFIG_H
