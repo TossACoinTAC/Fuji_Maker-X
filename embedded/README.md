@@ -9,11 +9,16 @@ release tooling can build a uniquely named firmware image.
 
 ## Toolchain
 
-Use the ESP-IDF version documented by the pinned XiaoZhi commit. The local
-baseline is a clean ESP-IDF 6.0.2 checkout at `~/esp/esp-idf-v6.0.2`, with
-tools in the standard `~/.espressif` directory, on the `esp32s3` target. The
-generated `dependencies.lock` is committed so registry dependencies resolve to
-the same versions and hashes on clean machines.
+Use the ESP-IDF version documented by the pinned XiaoZhi commit. The primary
+local baseline is a clean ESP-IDF 6.0.2 checkout at
+`/Volumes/Mac_DiskExtension/Developer/Toolchains/esp/esp-idf-v6.0.2`, with
+Espressif tools at
+`/Volumes/Mac_DiskExtension/Developer/Toolchains/espressif`, on the `esp32s3`
+target. Compatibility symlinks remain at `~/esp` and `~/.espressif`; the
+activation script falls back to those standard locations on machines without
+the external toolchain. The generated `dependencies.lock` is committed so
+registry dependencies resolve to the same versions and hashes on clean
+machines.
 
 ```zsh
 cd /Users/apple/Documents/Skd_Learning/26summer/Maker-X
@@ -25,7 +30,8 @@ python scripts/release.py fuji-devkit-s3 --name fuji-devkit-s3-probe
 
 The version command must print exactly `ESP-IDF v6.0.2`, without a `dirty`
 suffix. Use zsh consistently; a different shell may select a different system
-Python installation.
+Python installation. Mount `Mac_DiskExtension` before building on the primary
+development Mac.
 
 Do not flash `firmware/v2.0.3_atk-dnesp32s3.bin` to the Fuji breadboard. That
 image targets a different carrier with an ES8388 codec, XL9555 I/O expander,
