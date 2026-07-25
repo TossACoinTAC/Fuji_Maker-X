@@ -1,5 +1,62 @@
 # Fuji Embedded Development TODOs
 
+## 0. Waveshare 1.46 migration checkpoint (2026-07-25)
+
+The current target is the Waveshare `ESP32-S3-Touch-LCD-1.46`, replacing the
+earlier breadboard audio prototype. Project-owned support lives in
+`embedded/xiaozhi/main/boards/fuji-waveshare-1p46`; the upstream Waveshare
+board remains unchanged.
+
+Completed gates:
+
+- The physical board identifies as ESP32-S3 rev 0.2 with 16 MiB Flash and
+  8 MiB Octal PSRAM. Its original 16 MiB image is backed up as
+  `firmware/waveshare-1p46-original-2026-07-25.bin`, SHA-256
+  `2c68b9c9de9cd5d9ae5cf24850658be9908f6c41ecd588b9c1baafec1a93ca9b`.
+- The isolated probe verified chip, Flash, PSRAM and board identity without
+  initializing NVS, display, audio or networking.
+- I2C scan found TCA9554 `0x20`, PCF85063 `0x51`, SPD2010 touch `0x53` and
+  QMI8658 `0x6B`.
+- The 412x412 display passed color, orientation, round-boundary and backlight
+  checks at 40 MHz QSPI mode 3. Touch passed center, four-edge and continuous
+  drag checks. LCD and touch resets are controlled independently through the
+  TCA9554.
+- The microphone passed an RX-only controlled capture using the upstream pin
+  and slot map with Philips I2S framing. The valid 11-second PCM WAV has
+  SHA-256
+  `5f59f4ff64c2990ec6729141fbaf278543e23d96c0ba655487e9dfce7f679bd0`;
+  quiet/speech/snap RMS was 34.6/85.6/110.6 with zero read failures. Listening
+  confirmed clear speech and finger snaps with no notable background noise.
+
+Build status:
+
+- Five ESP-IDF 6.0.2 variants exist: probe, display test, microphone test,
+  speaker test and full firmware. Each has an isolated build directory and
+  sdkconfig under the external build root.
+- The default build root is
+  `/Volumes/Mac_DiskExtension/EmbeddedCache/Maker-X/xiaozhi`, configurable with
+  `XIAOZHI_BUILD_ROOT` or `release.py --build-root`, with a project-local
+  fallback when the volume is absent.
+- No-change builds for probe/display/microphone/speaker/full measured
+  4.49/4.41/4.67/4.46/4.44 seconds. All five merged binaries and release ZIPs
+  were generated.
+- Host static coverage is 33 tests. It checks pins, variants, partitions,
+  single board registration, diagnostic isolation, Philips audio framing and
+  the no-upstream-modification constraint.
+
+Remaining gates, in order:
+
+1. With the hardware volume at minimum, run the BOOT-armed TX-only speaker
+   diagnostic and check its short tone and speech for pops, distortion, noise
+   and correct silence after completion.
+2. Only after the speaker passes, flash the full board firmware and verify
+   Wi-Fi provisioning, wake, conversation and playback end to end.
+3. Add QMI8658, PCF85063, power-key and hold/shutdown behavior after the voice
+   loop is stable.
+4. Keep the battery disconnected until voltage, polarity, protection and the
+   connector have been checked separately. TF card and external breadboard
+   modules are outside this migration.
+
 ## 1. Current baseline and constraints
 
 The repository currently has:
