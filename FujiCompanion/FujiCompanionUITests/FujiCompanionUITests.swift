@@ -9,9 +9,10 @@ final class FujiCompanionUITests: XCTestCase {
     func testMockFoodRequestCompletesNavigationFlow() throws {
         let app = launchApp()
 
-        completeSelection(in: app)
+        let confirm = completeSelection(in: app)
 
-        XCTAssertTrue(app.staticTexts["路线已准备好"].waitForExistence(timeout: 3))
+        let success = app.staticTexts["路线已准备好"]
+        tap(confirm, until: success)
         XCTAssertTrue(app.staticTexts["已在 Apple 地图中打开步行路线"].exists)
     }
 
@@ -19,9 +20,9 @@ final class FujiCompanionUITests: XCTestCase {
     func testNavigationFailureReportsRealOutcome() throws {
         let app = launchApp(environment: ["UITEST_NAVIGATION_FAILURE": "1"])
 
-        completeSelection(in: app)
+        let confirm = completeSelection(in: app)
 
-        XCTAssertTrue(app.staticTexts["这次没有完成"].waitForExistence(timeout: 3))
+        tap(confirm, until: app.staticTexts["这次没有完成"])
         let failure = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS '测试地图不可用'")
         ).firstMatch
@@ -36,17 +37,28 @@ final class FujiCompanionUITests: XCTestCase {
         settingsTab.tap()
 
         let clearButton = app.buttons["privacy.clearData"]
-        XCTAssertTrue(clearButton.waitForExistence(timeout: 3))
-        clearButton.tap()
-        app.buttons["清除"].tap()
+        reveal(clearButton, in: app)
+        let confirmClear = app.buttons["清除"]
+        tap(clearButton, until: confirmClear, timeout: 2)
+        confirmClear.tap()
+        var dialogDismissed = confirmClear.waitForNonExistence(timeout: 2)
+        if !dialogDismissed, confirmClear.exists, confirmClear.isHittable {
+            confirmClear.tap()
+            dialogDismissed = confirmClear.waitForNonExistence(timeout: 2)
+        }
+        XCTAssertTrue(dialogDismissed)
 
-        XCTAssertTrue(app.buttons["privacy.accept"].waitForExistence(timeout: 3))
+        let acceptButton = app.buttons["privacy.accept"]
+        for _ in 0..<3 {
+            app.swipeDown()
+        }
+        reveal(acceptButton, in: app)
     }
 
     @MainActor
     func testOfflineStateIsVisible() throws {
         let app = launchApp(environment: ["UITEST_OFFLINE": "1"])
-        let status = app.otherElements["fuji.status"]
+        let status = app.staticTexts["fuji.status"]
 
         XCTAssertTrue(status.waitForExistence(timeout: 3))
         XCTAssertTrue(status.label.contains("未连接"))
@@ -70,21 +82,53 @@ final class FujiCompanionUITests: XCTestCase {
     }
 
     @MainActor
-    private func completeSelection(in app: XCUIApplication) {
+    private func completeSelection(in app: XCUIApplication) -> XCUIElement {
+        let status = app.staticTexts["fuji.status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 3))
+        let connected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS '演示设备已连接'"),
+            object: status
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [connected], timeout: 3), .completed)
+
         let simulate = app.buttons["debug.simulateFoodRequest"]
         XCTAssertTrue(simulate.waitForExistence(timeout: 3))
-        simulate.tap()
 
         let search = app.buttons["criteria.search"]
-        XCTAssertTrue(search.waitForExistence(timeout: 3))
-        search.tap()
+        tap(simulate, until: search)
 
         let select = app.buttons["restaurant.select.0"]
-        XCTAssertTrue(select.waitForExistence(timeout: 5))
-        select.tap()
+        tap(search, until: select, timeout: 5)
 
         let confirm = app.buttons["navigation.confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
-        confirm.tap()
+        tap(select, until: confirm)
+        return confirm
+    }
+
+    @MainActor
+    private func tap(
+        _ button: XCUIElement,
+        until target: XCUIElement,
+        timeout: TimeInterval = 3
+    ) {
+        XCTAssertTrue(button.exists)
+        XCTAssertTrue(button.isHittable)
+        button.tap()
+
+        var transitioned = target.waitForExistence(timeout: timeout)
+        if !transitioned, button.exists, button.isHittable {
+            button.tap()
+            transitioned = target.waitForExistence(timeout: timeout)
+        }
+        XCTAssertTrue(transitioned)
+    }
+
+    @MainActor
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<4 where !element.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.waitForExistence(timeout: 2))
+        XCTAssertTrue(element.isHittable)
     }
 }

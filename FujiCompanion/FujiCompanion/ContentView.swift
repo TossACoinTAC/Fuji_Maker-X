@@ -136,6 +136,7 @@ private struct FujiStatusBand: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(FujiPalette.separator.opacity(0.35), lineWidth: 1)
+                .allowsHitTesting(false)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("fuji.status")
@@ -252,6 +253,7 @@ private struct CriteriaPanel: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(FujiPalette.separator.opacity(0.35), lineWidth: 1)
+                .allowsHitTesting(false)
         }
     }
 }
@@ -296,10 +298,8 @@ private struct RecommendationsPanel: View {
                     confirm: { Task { await model.confirmNavigation() } },
                     cancel: model.rejectNavigation
                 )
-                .accessibilityIdentifier("restaurant.result.\(index)")
             }
         }
-        .accessibilityIdentifier("restaurant.results")
     }
 }
 
@@ -390,6 +390,7 @@ private struct RestaurantRow: View {
                     isPending ? FujiPalette.teal : FujiPalette.separator.opacity(0.35),
                     lineWidth: isPending ? 2 : 1
                 )
+                .allowsHitTesting(false)
         }
     }
 }
@@ -544,7 +545,6 @@ private struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
-            .accessibilityIdentifier("settings.form")
             .confirmationDialog(
                 "清除本机数据？",
                 isPresented: $showResetConfirmation,
