@@ -15,6 +15,10 @@ It intentionally does not modify the upstream
   `0x53`, QMI8658 IMU `0x6B`
 - Display test passed red/green/blue/white/black fields, orientation, round
   boundary and continuous touch at the center and four edges
+- QMI8658 reports WHO_AM_I `0x05`, revision `0x7C`, and changing acceleration
+  samples with approximately 1 g magnitude
+- PCF85063 responds at `0x51`; its low-voltage flag remains set while the
+  battery and RTC backup source are intentionally disconnected
 - Factory Flash backup SHA-256:
   `2c68b9c9de9cd5d9ae5cf24850658be9908f6c41ecd588b9c1baafec1a93ca9b`
 
@@ -42,9 +46,11 @@ python3 scripts/release.py fuji-waveshare-1p46 \
 ```
 
 The default external build root is
-`/Volumes/Mac_DiskExtension/EmbeddedCache/Maker-X/xiaozhi`. On 2026-07-25,
-no-change builds of probe, display, microphone, speaker and full firmware took
-4.49, 4.41, 4.67, 4.46 and 4.44 seconds respectively.
+`/Volumes/Mac_DiskExtension/EmbeddedCache/Maker-X/xiaozhi`. On 2026-07-26,
+final no-change builds of probe, display, microphone, speaker and full firmware
+took 4.47, 4.28, 4.20, 4.01 and 4.14 seconds respectively. All five final
+merged images and release ZIPs were regenerated successfully. Host static
+coverage is 35 tests.
 
 ## Pin map
 
@@ -56,6 +62,8 @@ no-change builds of probe, display, microphone, speaker and full firmware took
 | LCD backlight | GPIO5 |
 | LCD reset | TCA9554 EXIO2 |
 | Touch reset / interrupt | TCA9554 EXIO1 / GPIO4 |
+| QMI8658 interrupts | TCA9554 EXIO4 / EXIO5 |
+| PCF85063 interrupt | GPIO9 |
 | Microphone WS / BCLK / DIN | GPIO2 / GPIO15 / GPIO39 |
 | Speaker LRCK / BCLK / DOUT | GPIO38 / GPIO48 / GPIO47 |
 | BOOT / power key / power hold | GPIO0 / GPIO6 / GPIO7 |
@@ -101,3 +109,32 @@ finished with 24,740 bytes of minimum remaining stack. With the hardware
 volume raised slightly from minimum, listening confirmed intelligible speech,
 no notable pop or distortion, and silence after completion. The speaker gate
 passed. Keep the hardware volume low for subsequent bring-up.
+
+## Full firmware verification
+
+The full firmware passed hotspot provisioning, activation, MQTT login, local
+wake-word detection, ASR, conversation and speaker playback on 2026-07-26.
+Listening confirmed clear voice with no notable pop or distortion. This is the
+same board audio path used by the normal XiaoZhi state machine, not a loopback
+or diagnostic-only substitute.
+
+The normal board firmware also initializes a project-owned QMI8658 layer and a
+read-only PCF85063 layer. QMI8658 uses 4 g / 120 Hz acceleration and 256 dps /
+120 Hz gyroscope ranges. RTC reads never reset or set the chip; a retained-time
+gate remains deferred while its low-voltage flag is set and the battery is
+disconnected.
+
+Short-pressing the side PWR key toggles the backlight. Holding it for three
+seconds stops the audio service, disables codec I/O, turns off the backlight,
+waits for key release, configures GPIO6 as the deep-sleep wake source and
+releases GPIO7 power hold. A following short press performs a clean cold boot;
+display, IMU, Wi-Fi and wake-word recovery were verified on hardware.
+
+## Custom expressions
+
+The SPD2010 panel and touch implementation is independent from the on-screen
+XiaoZhi expression set. A future Fuji expression layer can map application
+states such as idle, listening, thinking, speaking and emotions to custom LVGL
+drawings, bitmap frames or sprite animations while retaining the existing
+panel, touch and backlight drivers. Large assets should use the existing assets
+partition and PSRAM rather than being compiled into the board driver.
