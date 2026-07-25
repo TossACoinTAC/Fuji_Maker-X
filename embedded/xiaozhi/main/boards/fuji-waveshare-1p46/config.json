@@ -1,0 +1,56 @@
+{
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "fuji-waveshare-1p46",
+            "idf_version": "==6.0.2",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y"
+            ]
+        },
+        {
+            "name": "fuji-waveshare-1p46-probe",
+            "idf_version": "==6.0.2",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_SPIRAM_IGNORE_NOTFOUND=y",
+                "CONFIG_BOARD_PROBE_ONLY=y"
+            ]
+        },
+        {
+            "name": "fuji-waveshare-1p46-display-test",
+            "idf_version": "==6.0.2",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_BOARD_DISPLAY_TEST_ONLY=y"
+            ]
+        },
+        {
+            "name": "fuji-waveshare-1p46-mic-test",
+            "idf_version": "==6.0.2",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m_mic_capture.csv\"",
+                "CONFIG_BOARD_MIC_TEST_ONLY=y"
+            ]
+        },
+        {
+            "name": "fuji-waveshare-1p46-speaker-test",
+            "idf_version": "==6.0.2",
+            "sdkconfig_append": [
+                "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+                "CONFIG_SPIRAM=y",
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_BOARD_SPEAKER_TEST_ONLY=y"
+            ]
+        }
+    ]
+}

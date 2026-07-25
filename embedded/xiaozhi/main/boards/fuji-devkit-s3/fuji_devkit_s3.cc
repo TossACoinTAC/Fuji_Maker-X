@@ -42,7 +42,7 @@ private:
 
 public:
     FujiDevKitS3() {
-        RunFujiDevKitS3BoardProbe();
+        RunBoardProbe();
 #if !CONFIG_BOARD_PROBE_ONLY
 #if !CONFIG_BOARD_DISPLAY_TEST_ONLY && !CONFIG_BOARD_OLED_TEST_ONLY
         InitializeFujiAmplifierSafeState();

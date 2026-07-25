@@ -129,6 +129,9 @@ choice BOARD_TYPE
     config BOARD_TYPE_FUJI_DEVKIT_S3
         bool "Fuji DevKit S3 (ESP32-S3-N16R8)"
         depends on IDF_TARGET_ESP32S3
+    config BOARD_TYPE_FUJI_WAVESHARE_1P46
+        bool "Fuji Waveshare 1.46 (ESP32-S3-Touch-LCD-1.46)"
+        depends on IDF_TARGET_ESP32S3
     config BOARD_TYPE_BREAD_COMPACT_WIFI_LCD
         bool "Bread Compact WiFi + LCD (面包板)"
         depends on IDF_TARGET_ESP32S3
@@ -596,18 +599,19 @@ endchoice
 config BOARD_PROBE_ONLY
     bool "Board probe only (no peripherals or network)"
     default n
-    depends on BOARD_TYPE_FUJI_DEVKIT_S3
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 || BOARD_TYPE_FUJI_WAVESHARE_1P46
     help
         Print chip, flash, PSRAM and reset information, then remain idle.
         No display, audio, button or Wi-Fi hardware is initialized.
 
 config BOARD_DISPLAY_TEST_ONLY
-    bool "Fuji display test only (no audio, button or network)"
+    bool "Fuji display and touch test only (no audio, button or network)"
     default n
-    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY
+    depends on (BOARD_TYPE_FUJI_DEVKIT_S3 || BOARD_TYPE_FUJI_WAVESHARE_1P46) && !BOARD_PROBE_ONLY
     help
-        Initialize only the ST7735S display, show solid test colors, then idle.
-        No audio, button or Wi-Fi hardware is initialized.
+        Initialize only the selected board's display and touch hardware, run
+        its isolated diagnostics, then idle. No audio, button or Wi-Fi
+        hardware is initialized.
 
 config BOARD_OLED_TEST_ONLY
     bool "Fuji 0.91-inch OLED test only (no audio, button or network)"
@@ -619,18 +623,27 @@ config BOARD_OLED_TEST_ONLY
         Wi-Fi hardware is initialized.
 
 config BOARD_MIC_TEST_ONLY
-    bool "Fuji INMP441 microphone test only (no speaker, button or network)"
+    bool "Fuji microphone test only (no speaker, button or network)"
     default n
-    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY
+    depends on (BOARD_TYPE_FUJI_DEVKIT_S3 || BOARD_TYPE_FUJI_WAVESHARE_1P46) && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY
     help
-        Keep the temporary OLED active and capture only the INMP441 receive
-        path. The speaker data pin is unused and the amplifier enable pin is
-        held low. No button, Wi-Fi or normal application is initialized.
+        Capture only the selected board's I2S microphone receive path to the
+        dedicated mic_capture partition. The speaker data pin is unused. No
+        button, Wi-Fi or normal application is initialized.
+
+config BOARD_SPEAKER_TEST_ONLY
+    bool "Fuji speaker test only (no microphone, button or network)"
+    default n
+    depends on BOARD_TYPE_FUJI_WAVESHARE_1P46 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_MIC_TEST_ONLY
+    help
+        Keep the speaker silent until BOOT is pressed, then play a short,
+        low-amplitude prompt and speech sample. The microphone data pin is
+        unused. No button, Wi-Fi or normal application is initialized.
 
 config BOARD_HARDWARE_SELF_TEST
     bool "Run Fuji peripheral self-test before the application"
     default n
-    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY && !BOARD_MIC_TEST_ONLY
+    depends on BOARD_TYPE_FUJI_DEVKIT_S3 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_OLED_TEST_ONLY && !BOARD_MIC_TEST_ONLY && !BOARD_SPEAKER_TEST_ONLY
     help
         Exercise the display, microphone and speaker before starting Xiaozhi.
         Only enable this after all modules have been wired and checked.
