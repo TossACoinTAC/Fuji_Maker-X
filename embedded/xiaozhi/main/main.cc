@@ -59,7 +59,7 @@ extern "C" void app_main(void) {
 #elif CONFIG_BOARD_SPEAKER_TEST_ONLY
     InitializeNvs();
     Board::GetInstance();
-    ESP_LOGI(TAG, "Speaker test complete; microphone, button and network remain disabled");
+    ESP_LOGI(TAG, "Speaker test armed; microphone, button and network remain disabled");
     IdleForever();
 #else
     InitializeNvs();

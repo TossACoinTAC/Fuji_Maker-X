@@ -143,7 +143,7 @@ bool WaveshareDisplay::Initialize(WavesharePeripherals& peripherals, Spd2010Touc
         return false;
     }
 
-    if (peripherals.ResetTouch() && touch.Initialize(peripherals.i2c_bus())) {
+    if (touch.Initialize(peripherals.i2c_bus())) {
         touch_ = &touch;
     } else {
         ESP_LOGW(TAG, "touch initialization failed; LCD diagnostics remain available");

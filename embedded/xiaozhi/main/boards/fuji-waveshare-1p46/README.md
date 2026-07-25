@@ -62,6 +62,10 @@ no-change builds of probe, display, microphone, speaker and full firmware took
 
 The display starts at 40 MHz QSPI mode 3. Increasing the clock is deferred
 until display and touch stability are verified on the physical board.
+On a Type-C cold boot, initialize the TCA9554 and pulse the dedicated touch
+reset before scanning the full I2C bus. A missing pre-panel-reset touch
+response is non-fatal; the touch layer verifies the controller by reading its
+firmware version after the display reset.
 
 ## Microphone verification
 
@@ -82,3 +86,18 @@ The microphone test pre-erases its Flash capture area before LVGL starts and
 disables the touch interrupt before recording. These restrictions apply only
 to the diagnostic firmware; the normal firmware keeps touch enabled and does
 not persist raw audio.
+
+## Speaker verification
+
+The TX-only diagnostic is intentionally one-shot. It waits for BOOT before
+creating I2S0, plays a 0.3-second 660 Hz prompt and the built-in welcome
+speech, writes trailing silence, then disables and deletes the I2S channel.
+Reset the board to re-arm it. The diagnostic uses a 32 KiB task because the
+normal XiaoZhi Opus task uses 24 KiB and the diagnostic also performs OGG
+demuxing; the demuxer buffer is allocated on the heap.
+
+On 2026-07-26 the diagnostic decoded all 35 welcome-speech packets and
+finished with 24,740 bytes of minimum remaining stack. With the hardware
+volume raised slightly from minimum, listening confirmed intelligible speech,
+no notable pop or distortion, and silence after completion. The speaker gate
+passed. Keep the hardware volume low for subsequent bring-up.

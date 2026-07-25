@@ -107,6 +107,13 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         )
         self.assertIn("ResetDisplay", peripherals)
         self.assertIn("ResetTouch", peripherals)
+        self.assertLess(
+            peripherals.index("esp_io_expander_new_i2c_tca9554"),
+            peripherals.index("return ResetTouch() && ScanI2cBus()"),
+        )
+        self.assertNotIn("peripherals.ResetTouch()", display)
+        self.assertIn("touch initialization will", peripherals)
+        self.assertIn("ReadFirmwareVersion()", touch)
         self.assertNotIn(
             "DISPLAY_RESET_EXPANDER_PIN | TOUCH_RESET_EXPANDER_PIN", peripherals
         )
@@ -147,6 +154,10 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertIn("I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG", source)
         self.assertNotIn("I2S_STD_MSB_SLOT_DEFAULT_CONFIG", source)
         self.assertIn("kLowDigitalGain = 2048", source)
+        self.assertIn("kSpeakerTaskStackSize = 32 * 1024", source)
+        self.assertIn('xTaskCreate(SpeakerTestTask, "speaker_test"', source)
+        self.assertIn("std::make_unique<OggDemuxer>()", source)
+        self.assertIn("minimum remaining stack", source)
         self.assertIn("WaitForBoot", source)
         self.assertLess(source.index("WaitForBoot(display)"), source.index("i2s_new_channel"))
         self.assertIn("i2s_channel_disable", source)
