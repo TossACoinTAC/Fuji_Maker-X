@@ -15,6 +15,11 @@ an iOS 26.5 iPhone.
 The app can build without a secrets file. Nearby search then reports that AMap
 is not configured instead of embedding a key in source control.
 
+AMap 9.8.0 does not contain an Apple Silicon simulator slice. Debug and test
+builds therefore use the fixture search service, while Release device builds
+link the real AMap SDK. Real nearby search must be verified on an iPhone using
+the Release configuration.
+
 ## P0 boundary
 
 The complete food flow runs through `MockDeviceTransport`: request, nearby
@@ -41,6 +46,10 @@ xcodebuild -workspace FujiCompanion.xcworkspace \
   CODE_SIGNING_ALLOWED=NO build-for-testing
 ```
 
-Actual XCTest execution requires an installed simulator device. Real AMap,
-navigation fallback, AirPods routing/ducking, and iOS 26.5 installation must be
-verified on the intended iPhone before release.
+Verified on 2026-07-25 with an iPhone 15 Pro Max simulator running iOS 26.5:
+all 13 unit tests and all 4 functional UI flows passed. Debug and Release
+arm64 device builds also passed; the signed Debug app was installed and launched
+on an iPhone 15 Pro Max running iOS 26.5.2.
+
+Real AMap queries, navigation fallback, and AirPods routing/ducking still need
+interactive Release-device verification before release.
