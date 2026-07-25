@@ -38,6 +38,11 @@ void InitializeWavesharePowerHold() {
     ESP_LOGI(TAG, "power hold asserted on GPIO%d; battery path remains untested", POWER_HOLD_GPIO);
 }
 
+void ReleaseWavesharePowerHold() {
+    ESP_LOGW(TAG, "releasing power hold on GPIO%d", POWER_HOLD_GPIO);
+    ESP_ERROR_CHECK(gpio_set_level(POWER_HOLD_GPIO, 0));
+}
+
 bool WavesharePeripherals::CheckStep(esp_err_t result, const char* step) {
     if (result == ESP_OK) {
         return true;
@@ -105,6 +110,23 @@ bool WavesharePeripherals::Initialize() {
                    "TCA9554 reset pin direction") ||
         !CheckStep(esp_io_expander_set_level(io_expander_, reset_pins, 1),
                    "TCA9554 reset pin idle level")) {
+        return false;
+    }
+
+    const uint32_t imu_interrupt_pins =
+        IMU_INTERRUPT_1_EXPANDER_PIN | IMU_INTERRUPT_2_EXPANDER_PIN;
+    if (!CheckStep(esp_io_expander_set_dir(io_expander_, imu_interrupt_pins, IO_EXPANDER_INPUT),
+                   "QMI8658 interrupt pin direction")) {
+        return false;
+    }
+
+    gpio_config_t rtc_interrupt_config = {};
+    rtc_interrupt_config.pin_bit_mask = 1ULL << RTC_INTERRUPT_GPIO;
+    rtc_interrupt_config.mode = GPIO_MODE_INPUT;
+    rtc_interrupt_config.pull_up_en = GPIO_PULLUP_ENABLE;
+    rtc_interrupt_config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    rtc_interrupt_config.intr_type = GPIO_INTR_DISABLE;
+    if (!CheckStep(gpio_config(&rtc_interrupt_config), "PCF85063 interrupt GPIO setup")) {
         return false;
     }
 

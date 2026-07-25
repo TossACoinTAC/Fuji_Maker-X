@@ -4,6 +4,7 @@
 #include <esp_io_expander.h>
 
 void InitializeWavesharePowerHold();
+void ReleaseWavesharePowerHold();
 
 class WavesharePeripherals {
 public:
