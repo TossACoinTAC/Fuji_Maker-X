@@ -1,7 +1,7 @@
-# PlatformIO
-.pio/
-.pioenvs/
-.piolibdeps/
+# ESP-IDF
+sdkconfig
+sdkconfig.old
+managed_components/
 
 # Python virtual environment / toolchain
 .venv/
@@ -15,6 +15,15 @@ __pycache__/
 .claude/
 AGENT.md
 CLAUDE.md
+
+# Xcode / CocoaPods
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+Pods/
+Secrets.xcconfig
 
 # OS
 .DS_Store

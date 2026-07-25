@@ -1,0 +1,20 @@
+platform :ios, '18.0'
+
+project 'FujiCompanion.xcodeproj'
+
+target 'FujiCompanion' do
+  use_frameworks! :linkage => :static
+
+  # AMap 9.8.0 has no arm64-simulator slice. Debug uses fixtures so tests can
+  # run natively on Apple Silicon; Release retains the real SDK for devices.
+  pod 'AMapFoundation-NO-IDFA', '1.9.0', :configurations => ['Release']
+  pod 'AMapSearch-NO-IDFA', '9.8.0', :configurations => ['Release']
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
+    end
+  end
+end

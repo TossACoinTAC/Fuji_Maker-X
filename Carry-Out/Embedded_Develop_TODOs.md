@@ -1,5 +1,83 @@
 # Fuji Embedded Development TODOs
 
+## 0. Waveshare 1.46 migration checkpoint (2026-07-26)
+
+The current target is the Waveshare `ESP32-S3-Touch-LCD-1.46`, replacing the
+earlier breadboard audio prototype. Project-owned support lives in
+`embedded/xiaozhi/main/boards/fuji-waveshare-1p46`; the upstream Waveshare
+board remains unchanged.
+
+Completed gates:
+
+- The physical board identifies as ESP32-S3 rev 0.2 with 16 MiB Flash and
+  8 MiB Octal PSRAM. Its original 16 MiB image is backed up as
+  `firmware/waveshare-1p46-original-2026-07-25.bin`, SHA-256
+  `2c68b9c9de9cd5d9ae5cf24850658be9908f6c41ecd588b9c1baafec1a93ca9b`.
+- The isolated probe verified chip, Flash, PSRAM and board identity without
+  initializing NVS, display, audio or networking.
+- I2C scan found TCA9554 `0x20`, PCF85063 `0x51`, SPD2010 touch `0x53` and
+  QMI8658 `0x6B`.
+- The 412x412 display passed color, orientation, round-boundary and backlight
+  checks at 40 MHz QSPI mode 3. Touch passed center, four-edge and continuous
+  drag checks. LCD and touch resets are controlled independently through the
+  TCA9554.
+- The microphone passed an RX-only controlled capture using the upstream pin
+  and slot map with Philips I2S framing. The valid 11-second PCM WAV has
+  SHA-256
+  `5f59f4ff64c2990ec6729141fbaf278543e23d96c0ba655487e9dfce7f679bd0`;
+  quiet/speech/snap RMS was 34.6/85.6/110.6 with zero read failures. Listening
+  confirmed clear speech and finger snaps with no notable background noise.
+- The BOOT-armed TX-only speaker diagnostic decoded all 35 welcome-speech
+  packets and then disabled its I2S channel. Its dedicated 32 KiB task retained
+  at least 24,740 bytes of stack. At low hardware volume, listening confirmed
+  intelligible speech, no notable pop or distortion, and silence after
+  completion. The speaker gate passed on 2026-07-26.
+- The full firmware completed hotspot provisioning, activation, MQTT login,
+  local wake-word detection, ASR, conversation and speaker playback. Listening
+  confirmed clear speech with no notable pop or distortion, so the complete
+  voice loop passed on 2026-07-26.
+- The project-owned QMI8658 driver found WHO_AM_I `0x05`, revision `0x7C`, and
+  returned changing acceleration samples with approximately 1 g magnitude.
+  The IMU communication and sample-validity gate passed.
+- The project-owned PCF85063 driver reads the RTC without resetting or writing
+  it. The device responds at `0x51`; `voltage_low=1` is expected while no
+  battery or RTC backup source is connected, so valid retained time is not yet
+  claimed.
+- A short PWR-key press toggles the LCD backlight off and on. A three-second
+  press stops audio tasks, disables codec I/O, turns off the backlight,
+  releases GPIO7 power hold and enters deep sleep with GPIO6 wake. A subsequent
+  short press cold-started the display, IMU, Wi-Fi and wake-word engine. The
+  USB-powered shutdown and recovery gate passed.
+
+Build status:
+
+- Five ESP-IDF 6.0.2 variants exist: probe, display test, microphone test,
+  speaker test and full firmware. Each has an isolated build directory and
+  sdkconfig under the external build root.
+- The default build root is
+  `/Volumes/Mac_DiskExtension/EmbeddedCache/Maker-X/xiaozhi`, configurable with
+  `XIAOZHI_BUILD_ROOT` or `release.py --build-root`, with a project-local
+  fallback when the volume is absent.
+- Final no-change builds for probe/display/microphone/speaker/full measured
+  4.47/4.28/4.20/4.01/4.14 seconds. All five merged binaries and release ZIPs
+  were regenerated from the final source.
+- Host static coverage is 35 tests. It checks pins, variants, partitions,
+  single board registration, diagnostic isolation, Philips audio framing and
+  the no-upstream-modification constraint, including IMU, RTC and power-key
+  integration.
+
+The board migration is complete for USB-powered development. Remaining work is
+deliberately outside the completed migration gates:
+
+1. Add a Fuji-owned expression renderer above the SPD2010/LVGL display driver,
+   mapping idle, listening, thinking, speaking and emotion states to custom
+   static or animated assets. This must not modify the panel/touch driver.
+2. Validate retained RTC time only after its backup-power context is understood
+   and safe; the current read-only driver must not silently set the clock.
+3. Keep the battery disconnected until voltage, polarity, protection and the
+   connector have been checked separately. TF card and external breadboard
+   modules remain outside this migration.
+
 ## 1. Current baseline and constraints
 
 The repository currently has:

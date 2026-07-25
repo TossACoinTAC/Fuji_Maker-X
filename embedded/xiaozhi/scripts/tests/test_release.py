@@ -1,0 +1,183 @@
+import importlib.util
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location("release", ROOT / "scripts/release.py")
+release = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(release)
+
+
+class VersionTests(unittest.TestCase):
+    def test_parse_and_match(self):
+        self.assertEqual(release._parse_version("ESP-IDF v6.0.1"), (6, 0, 1))
+        self.assertTrue(release._version_matches((5, 5, 4), "<6.0"))
+        self.assertTrue(release._version_matches((6, 0, 1), ">=6.0"))
+        with self.assertRaises(ValueError):
+            release._version_matches((6, 0, 1), "~=6.0")
+
+    def test_current_matrix_counts_and_uniqueness(self):
+        idf5 = release._collect_variants(idf_version=(5, 5, 4))
+        idf6 = release._collect_variants(idf_version=(6, 0, 2))
+        self.assertEqual(len(idf5), 172)
+        self.assertEqual(len(idf6), 169)
+        for variants in (idf5, idf6):
+            names = [variant["full_name"] for variant in variants]
+            self.assertEqual(len(names), len(set(names)))
+
+    def test_fuji_variants_require_idf_6_0_2(self):
+        before = release._collect_variants(idf_version=(6, 0, 1))
+        current = release._collect_variants(idf_version=(6, 0, 2))
+        after = release._collect_variants(idf_version=(6, 0, 3))
+
+        for variants in (before, after):
+            self.assertFalse(any(item["board"] == "fuji-devkit-s3" for item in variants))
+        self.assertEqual(
+            sorted(item["name"] for item in current if item["board"] == "fuji-devkit-s3"),
+            [
+                "fuji-devkit-s3",
+                "fuji-devkit-s3-display-test",
+                "fuji-devkit-s3-mic-test",
+                "fuji-devkit-s3-oled-test",
+                "fuji-devkit-s3-probe",
+                "fuji-devkit-s3-self-test",
+            ],
+        )
+        self.assertEqual(
+            sorted(item["name"] for item in current if item["board"] == "fuji-waveshare-1p46"),
+            [
+                "fuji-waveshare-1p46",
+                "fuji-waveshare-1p46-display-test",
+                "fuji-waveshare-1p46-mic-test",
+                "fuji-waveshare-1p46-probe",
+                "fuji-waveshare-1p46-speaker-test",
+            ],
+        )
+
+
+class BuildDirectoryTests(unittest.TestCase):
+    def test_explicit_build_root_has_priority(self):
+        with mock.patch.dict(os.environ, {"XIAOZHI_BUILD_ROOT": "/env/cache"}):
+            self.assertEqual(release._resolve_build_root("~/explicit").name, "explicit")
+
+    def test_environment_build_root(self):
+        with mock.patch.dict(os.environ, {"XIAOZHI_BUILD_ROOT": "/env/cache"}):
+            self.assertEqual(release._resolve_build_root(), Path("/env/cache"))
+
+    def test_fallback_build_root(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch.object(Path, "is_dir", return_value=False):
+                self.assertEqual(release._resolve_build_root(), Path("build"))
+
+    def test_variant_build_directories_are_isolated(self):
+        root = Path("/cache")
+        self.assertEqual(
+            release._variant_build_dir(root, "fuji-waveshare-1p46-probe"),
+            Path("/cache/fuji-waveshare-1p46-probe"),
+        )
+
+    def test_sdkconfig_overrides_replace_existing_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sdkconfig = Path(temp_dir) / "sdkconfig"
+            sdkconfig.write_text(
+                "CONFIG_IDF_TARGET=\"esp32s3\"\nCONFIG_SPIRAM=n\n# CONFIG_FOO is not set\n",
+                encoding="utf-8",
+            )
+            release._apply_sdkconfig_overrides(
+                sdkconfig,
+                ["CONFIG_SPIRAM=y", "CONFIG_FOO=y"],
+            )
+            contents = sdkconfig.read_text(encoding="utf-8")
+            self.assertEqual(contents.count("CONFIG_SPIRAM="), 1)
+            self.assertIn("CONFIG_SPIRAM=y", contents)
+            self.assertIn("CONFIG_FOO=y", contents)
+            self.assertNotIn("# CONFIG_FOO is not set", contents)
+
+    def test_sdkconfig_overrides_replace_board_selection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sdkconfig = Path(temp_dir) / "sdkconfig"
+            sdkconfig.write_text(
+                "CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI=y\n"
+                "# CONFIG_BOARD_TYPE_FUJI_DEVKIT_S3 is not set\n",
+                encoding="utf-8",
+            )
+            release._apply_sdkconfig_overrides(
+                sdkconfig,
+                ["CONFIG_BOARD_TYPE_FUJI_WAVESHARE_1P46=y"],
+            )
+            board_lines = [
+                line
+                for line in sdkconfig.read_text(encoding="utf-8").splitlines()
+                if line.startswith("CONFIG_BOARD_TYPE_")
+            ]
+            self.assertEqual(
+                board_lines,
+                ["CONFIG_BOARD_TYPE_FUJI_WAVESHARE_1P46=y"],
+            )
+
+
+class BoardSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.variants = [
+            {"board": "bread-compact-wifi", "name": "bread-compact-wifi", "full_name": "bread-compact-wifi"},
+            {
+                "board": "waveshare/esp32-c6-touch-amoled-2.06",
+                "name": "esp32-c6-touch-amoled-2.06",
+                "full_name": "waveshare-esp32-c6-touch-amoled-2.06",
+            },
+        ]
+
+    def test_nested_manufacturer_board_path(self):
+        selected = release._select_variants_for_changes(
+            self.variants,
+            ["main/boards/waveshare/esp32-c6-touch-amoled-2.06/config.h"],
+        )
+        self.assertEqual([item["board"] for item in selected], [self.variants[1]["board"]])
+
+    def test_common_and_core_changes_select_all(self):
+        for path in (
+            "main/boards/common/board.cc",
+            "main/application.cc",
+            "components/esp-ml307/src/at_modem.cc",
+            "scripts/build_default_assets.py",
+            "scripts/release.py",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    release._select_variants_for_changes(self.variants, [path]),
+                    self.variants,
+                )
+
+    def test_docs_only_selects_none(self):
+        self.assertEqual(
+            release._select_variants_for_changes(self.variants, ["docs/readme.md"]),
+            [],
+        )
+
+
+class InvalidConfigTests(unittest.TestCase):
+    def test_invalid_version_rule_fails_collection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            boards = Path(temp_dir)
+            board_dir = boards / "bad-board"
+            board_dir.mkdir()
+            (board_dir / "config.json").write_text(json.dumps({
+                "target": "esp32s3",
+                "builds": [{
+                    "name": "bad-board",
+                    "idf_version": "~=6.0",
+                }],
+            }), encoding="utf-8")
+            with mock.patch.object(release, "_BOARDS_DIR", boards):
+                with self.assertRaisesRegex(ValueError, "Invalid ESP-IDF version expression"):
+                    release._collect_variants(idf_version=(6, 0, 1))
+
+
+if __name__ == "__main__":
+    unittest.main()
