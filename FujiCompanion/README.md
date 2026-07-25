@@ -20,6 +20,17 @@ builds therefore use the fixture search service, while Release device builds
 link the real AMap SDK. Real nearby search must be verified on an iPhone using
 the Release configuration.
 
+## Local developer storage
+
+On the primary development Mac, mount `Mac_DiskExtension` before opening Xcode.
+Project DerivedData lives at
+`/Volumes/Mac_DiskExtension/XcodeCache/FujiCompanion`, and the user-level iOS
+DeviceSupport directory lives at
+`/Volumes/Mac_DiskExtension/Developer/Toolchains/Xcode/iOS DeviceSupport` with
+a compatibility symlink from Xcode's standard Library path. Xcode.app's signed
+toolchains and platforms, along with the global CoreSimulator runtime, remain
+in their standard system locations.
+
 ## P0 boundary
 
 The complete food flow runs through `MockDeviceTransport`: request, nearby
@@ -43,6 +54,7 @@ xcodebuild -workspace FujiCompanion.xcworkspace \
   -scheme FujiCompanion \
   -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /Volumes/Mac_DiskExtension/XcodeCache/FujiCompanion \
   CODE_SIGNING_ALLOWED=NO build-for-testing
 ```
 
