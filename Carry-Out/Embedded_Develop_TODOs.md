@@ -27,6 +27,11 @@ Completed gates:
   `5f59f4ff64c2990ec6729141fbaf278543e23d96c0ba655487e9dfce7f679bd0`;
   quiet/speech/snap RMS was 34.6/85.6/110.6 with zero read failures. Listening
   confirmed clear speech and finger snaps with no notable background noise.
+- The BOOT-armed TX-only speaker diagnostic decoded all 35 welcome-speech
+  packets and then disabled its I2S channel. Its dedicated 32 KiB task retained
+  at least 24,740 bytes of stack. At low hardware volume, listening confirmed
+  intelligible speech, no notable pop or distortion, and silence after
+  completion. The speaker gate passed on 2026-07-26.
 
 Build status:
 
@@ -46,14 +51,11 @@ Build status:
 
 Remaining gates, in order:
 
-1. With the hardware volume at minimum, run the BOOT-armed TX-only speaker
-   diagnostic and check its short tone and speech for pops, distortion, noise
-   and correct silence after completion.
-2. Only after the speaker passes, flash the full board firmware and verify
+1. Flash the full board firmware and verify
    Wi-Fi provisioning, wake, conversation and playback end to end.
-3. Add QMI8658, PCF85063, power-key and hold/shutdown behavior after the voice
+2. Add QMI8658, PCF85063, power-key and hold/shutdown behavior after the voice
    loop is stable.
-4. Keep the battery disconnected until voltage, polarity, protection and the
+3. Keep the battery disconnected until voltage, polarity, protection and the
    connector have been checked separately. TF card and external breadboard
    modules are outside this migration.
 
