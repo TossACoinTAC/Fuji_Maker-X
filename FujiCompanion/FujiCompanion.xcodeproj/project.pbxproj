@@ -7,9 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6A349D7916E3A0FAEF084CDE /* Pods_FujiCompanionTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5A2EFD6B2257D5E50377B97 /* Pods_FujiCompanionTests.framework */; };
 		7525ED2A434883ED81ADE230 /* Pods_FujiCompanion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21E6D7D54B928CE46930B606 /* Pods_FujiCompanion.framework */; };
-		865EB6EBA5A23E14DC26ACDE /* Pods_FujiCompanionUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25370B3CA44CBE24579AB180 /* Pods_FujiCompanionUITests.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -30,18 +28,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		015921F88FED7A640A64DEE8 /* Pods-FujiCompanionTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FujiCompanionTests.debug.xcconfig"; path = "Target Support Files/Pods-FujiCompanionTests/Pods-FujiCompanionTests.debug.xcconfig"; sourceTree = "<group>"; };
 		1856CB023013DD9200770FE3 /* FujiCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FujiCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1856CB0F3013DD9400770FE3 /* FujiCompanionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FujiCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1856CB193013DD9400770FE3 /* FujiCompanionUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FujiCompanionUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		21E6D7D54B928CE46930B606 /* Pods_FujiCompanion.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_FujiCompanion.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		25370B3CA44CBE24579AB180 /* Pods_FujiCompanionUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_FujiCompanionUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		5C2DCCAC67974AAE86F10BE1 /* Pods-FujiCompanionUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FujiCompanionUITests.debug.xcconfig"; path = "Target Support Files/Pods-FujiCompanionUITests/Pods-FujiCompanionUITests.debug.xcconfig"; sourceTree = "<group>"; };
 		7A5322F6000EFA554993C582 /* Pods-FujiCompanion.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FujiCompanion.release.xcconfig"; path = "Target Support Files/Pods-FujiCompanion/Pods-FujiCompanion.release.xcconfig"; sourceTree = "<group>"; };
-		A3C3B51E1E6358200D30FAA2 /* Pods-FujiCompanionUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FujiCompanionUITests.release.xcconfig"; path = "Target Support Files/Pods-FujiCompanionUITests/Pods-FujiCompanionUITests.release.xcconfig"; sourceTree = "<group>"; };
-		B35D46D18D715BE0E260757A /* Pods-FujiCompanionTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FujiCompanionTests.release.xcconfig"; path = "Target Support Files/Pods-FujiCompanionTests/Pods-FujiCompanionTests.release.xcconfig"; sourceTree = "<group>"; };
 		C5D0E78292A1EE05812EAD7F /* Pods-FujiCompanion.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-FujiCompanion.debug.xcconfig"; path = "Target Support Files/Pods-FujiCompanion/Pods-FujiCompanion.debug.xcconfig"; sourceTree = "<group>"; };
-		E5A2EFD6B2257D5E50377B97 /* Pods_FujiCompanionTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_FujiCompanionTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000001 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		F00000000000000000000002 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		F00000000000000000000003 /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; };
@@ -50,16 +42,22 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1856CB043013DD9200770FE3 /* FujiCompanion */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = FujiCompanion;
 			sourceTree = "<group>";
 		};
 		1856CB123013DD9400770FE3 /* FujiCompanionTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = FujiCompanionTests;
 			sourceTree = "<group>";
 		};
 		1856CB1C3013DD9400770FE3 /* FujiCompanionUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = FujiCompanionUITests;
 			sourceTree = "<group>";
 		};
@@ -78,7 +76,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6A349D7916E3A0FAEF084CDE /* Pods_FujiCompanionTests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,7 +83,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				865EB6EBA5A23E14DC26ACDE /* Pods_FujiCompanionUITests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -120,8 +116,6 @@
 			isa = PBXGroup;
 			children = (
 				21E6D7D54B928CE46930B606 /* Pods_FujiCompanion.framework */,
-				E5A2EFD6B2257D5E50377B97 /* Pods_FujiCompanionTests.framework */,
-				25370B3CA44CBE24579AB180 /* Pods_FujiCompanionUITests.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -141,10 +135,6 @@
 			children = (
 				C5D0E78292A1EE05812EAD7F /* Pods-FujiCompanion.debug.xcconfig */,
 				7A5322F6000EFA554993C582 /* Pods-FujiCompanion.release.xcconfig */,
-				015921F88FED7A640A64DEE8 /* Pods-FujiCompanionTests.debug.xcconfig */,
-				B35D46D18D715BE0E260757A /* Pods-FujiCompanionTests.release.xcconfig */,
-				5C2DCCAC67974AAE86F10BE1 /* Pods-FujiCompanionUITests.debug.xcconfig */,
-				A3C3B51E1E6358200D30FAA2 /* Pods-FujiCompanionUITests.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -177,7 +167,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1856CB263013DD9400770FE3 /* Build configuration list for PBXNativeTarget "FujiCompanionTests" */;
 			buildPhases = (
-				4FC8A5970790223D98E8212A /* [CP] Check Pods Manifest.lock */,
 				1856CB0B3013DD9400770FE3 /* Sources */,
 				1856CB0C3013DD9400770FE3 /* Frameworks */,
 				1856CB0D3013DD9400770FE3 /* Resources */,
@@ -199,7 +188,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1856CB293013DD9400770FE3 /* Build configuration list for PBXNativeTarget "FujiCompanionUITests" */;
 			buildPhases = (
-				9B5E7D7AA40A8D0772C92325 /* [CP] Check Pods Manifest.lock */,
 				1856CB153013DD9400770FE3 /* Sources */,
 				1856CB163013DD9400770FE3 /* Frameworks */,
 				1856CB173013DD9400770FE3 /* Resources */,
@@ -302,50 +290,6 @@
 			);
 			outputPaths = (
 				"$(DERIVED_FILE_DIR)/Pods-FujiCompanion-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		4FC8A5970790223D98E8212A /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-FujiCompanionTests-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		9B5E7D7AA40A8D0772C92325 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-FujiCompanionUITests-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -575,7 +519,6 @@
 		};
 		1856CB273013DD9400770FE3 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 015921F88FED7A640A64DEE8 /* Pods-FujiCompanionTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -598,7 +541,6 @@
 		};
 		1856CB283013DD9400770FE3 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = B35D46D18D715BE0E260757A /* Pods-FujiCompanionTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -621,7 +563,6 @@
 		};
 		1856CB2A3013DD9400770FE3 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 5C2DCCAC67974AAE86F10BE1 /* Pods-FujiCompanionUITests.debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -643,7 +584,6 @@
 		};
 		1856CB2B3013DD9400770FE3 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A3C3B51E1E6358200D30FAA2 /* Pods-FujiCompanionUITests.release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

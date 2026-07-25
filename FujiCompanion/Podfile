@@ -5,15 +5,10 @@ project 'FujiCompanion.xcodeproj'
 target 'FujiCompanion' do
   use_frameworks! :linkage => :static
 
-  pod 'AMapSearch-NO-IDFA', '9.8.0'
-
-  target 'FujiCompanionTests' do
-    inherit! :search_paths
-  end
-
-  target 'FujiCompanionUITests' do
-    inherit! :search_paths
-  end
+  # AMap 9.8.0 has no arm64-simulator slice. Debug uses fixtures so tests can
+  # run natively on Apple Silicon; Release retains the real SDK for devices.
+  pod 'AMapFoundation-NO-IDFA', '1.9.0', :configurations => ['Release']
+  pod 'AMapSearch-NO-IDFA', '9.8.0', :configurations => ['Release']
 end
 
 post_install do |installer|

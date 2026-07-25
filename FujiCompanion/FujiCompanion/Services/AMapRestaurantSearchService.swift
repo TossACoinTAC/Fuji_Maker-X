@@ -1,3 +1,4 @@
+#if canImport(AMapFoundationKit) && canImport(AMapSearchKit)
 @preconcurrency import AMapFoundationKit
 @preconcurrency import AMapSearchKit
 import Foundation
@@ -126,6 +127,23 @@ final class AMapRestaurantSearchService: NSObject, RestaurantSearching, AMapSear
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
+#else
+import Foundation
+
+@MainActor
+final class AMapRestaurantSearchService: RestaurantSearching {
+    init(consentProvider: @escaping () -> Bool) {}
+
+    func search(
+        near coordinate: GeoCoordinate,
+        criteria: RestaurantSearchCriteria
+    ) async throws -> [Restaurant] {
+        throw RestaurantSearchError.provider("高德 SDK 仅在 Release 真机构建中启用")
+    }
+
+    func withdrawPrivacyConsent() {}
+}
+#endif
 
 @MainActor
 final class FixtureRestaurantSearchService: RestaurantSearching {
