@@ -14,6 +14,7 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         expected = {
             "POWER_BUTTON_GPIO": 6,
             "POWER_HOLD_GPIO": 7,
+            "RTC_INTERRUPT_GPIO": 9,
             "AUDIO_I2S_MIC_GPIO_WS": 2,
             "AUDIO_I2S_MIC_GPIO_BCLK": 15,
             "AUDIO_I2S_MIC_GPIO_DIN": 39,
@@ -45,6 +46,12 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertIn("#define DISPLAY_HEIGHT 412", config)
         self.assertIn("#define DISPLAY_SPI_CLOCK_HZ (40 * 1000 * 1000)", config)
         self.assertIn("#define DISPLAY_SPI_MODE 3", config)
+        self.assertIn(
+            "#define IMU_INTERRUPT_2_EXPANDER_PIN IO_EXPANDER_PIN_NUM_3", config
+        )
+        self.assertIn(
+            "#define IMU_INTERRUPT_1_EXPANDER_PIN IO_EXPANDER_PIN_NUM_4", config
+        )
 
     def test_exactly_five_idf_6_variants(self):
         config = json.loads((BOARD_DIR / "config.json").read_text(encoding="utf-8"))
@@ -162,6 +169,47 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertLess(source.index("WaitForBoot(display)"), source.index("i2s_new_channel"))
         self.assertIn("i2s_channel_disable", source)
         self.assertIn("OGG_WELCOME", source)
+
+    def test_motion_and_rtc_drivers_are_private_and_conservative(self):
+        board = (BOARD_DIR / "fuji_waveshare_1p46.cc").read_text(encoding="utf-8")
+        imu = (BOARD_DIR / "waveshare_imu.cc").read_text(encoding="utf-8")
+        rtc = (BOARD_DIR / "waveshare_rtc.cc").read_text(encoding="utf-8")
+        self.assertIn("InitializeMotionAndClock", board)
+        normal_branch = board.split("#else", maxsplit=1)[1].split("#endif", maxsplit=1)[0]
+        self.assertIn("InitializeMotionAndClock();", normal_branch)
+        self.assertNotIn("InitializeMotionAndClock();", board.split("#else", maxsplit=1)[0])
+        self.assertIn("kExpectedWhoAmI = 0x05", imu)
+        self.assertIn("kAcceleration4gAt120Hz = 0x16", imu)
+        self.assertIn("kGyroscope256dpsAt120Hz = 0x46", imu)
+        self.assertIn("kEnableAccelerationAndGyroscope = 0x43", imu)
+        self.assertIn("acceleration_sum > 0.1f", imu)
+        self.assertIn("ReadSample", imu)
+        self.assertIn("PCF85063 read-only time", rtc)
+        self.assertIn("2000 + BcdToDecimal(year)", rtc)
+        self.assertNotIn("i2c_master_transmit(", rtc)
+
+    def test_power_key_shutdown_mutes_before_releasing_hold(self):
+        board = (BOARD_DIR / "fuji_waveshare_1p46.cc").read_text(encoding="utf-8")
+        peripherals = (BOARD_DIR / "waveshare_peripherals.cc").read_text(encoding="utf-8")
+        shutdown = board.split("power_button_->OnLongPress", maxsplit=1)[1].split(
+            "void InitializeMotionAndClock", maxsplit=1
+        )[0]
+        self.assertIn("Application::GetInstance().Schedule", shutdown)
+        self.assertIn("audio_service.Stop()", shutdown)
+        self.assertIn("esp_sleep_enable_ext1_wakeup_io", shutdown)
+        self.assertIn("ESP_EXT1_WAKEUP_ANY_LOW", shutdown)
+        self.assertIn("esp_deep_sleep_start()", shutdown)
+        release = shutdown.index("ReleaseWavesharePowerHold")
+        self.assertLess(shutdown.index("audio_service.Stop()"), release)
+        self.assertLess(shutdown.index("EnableOutput(false)"), release)
+        self.assertLess(shutdown.index("EnableInput(false)"), release)
+        self.assertLess(shutdown.index("SetBrightness(0)"), release)
+        self.assertIn("gpio_set_level(POWER_HOLD_GPIO, 0)", peripherals)
+        constructor = board.split("FujiWaveshare1p46() {", maxsplit=1)[1]
+        self.assertLess(
+            constructor.index("InitializeWavesharePowerHold()"),
+            constructor.index("InitializeMotionAndClock()"),
+        )
 
 
 if __name__ == "__main__":
