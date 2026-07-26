@@ -132,9 +132,58 @@ display, IMU, Wi-Fi and wake-word recovery were verified on hardware.
 
 ## Custom expressions
 
-The SPD2010 panel and touch implementation is independent from the on-screen
-XiaoZhi expression set. A future Fuji expression layer can map application
-states such as idle, listening, thinking, speaking and emotions to custom LVGL
-drawings, bitmap frames or sprite animations while retaining the existing
-panel, touch and backlight drivers. Large assets should use the existing assets
-partition and PSRAM rather than being compiled into the board driver.
+The project-owned `FujiExpressionController` maps the live XiaoZhi state to
+`idle`, `listening`, `thinking`, `connecting`, `speaking`, `success`, `error`,
+`offline` and `muted`. Its fixed priority is screen-off/deep-sleep, fatal error
+or offline, mute, device state, then a server emotion hint. A server hint cannot
+override an active or safety state.
+
+Place transparent 320x320 images in `assets/` using the `fuji_<state>.png`
+names. Listening, thinking, connecting and speaking may instead use GIF files
+with the same stem; every GIF frame delay must limit playback to 12 fps or less.
+Files are packed into the existing assets partition, while decoded image cache
+uses PSRAM when available. Missing, malformed, incorrectly sized or too-fast
+assets fall back to allocation-stable LVGL geometry.
+
+State changes stop and rewind the old animation before selecting the next one.
+The PWR short-press and controlled shutdown paths pause the expression timer
+before the backlight is disabled. Wake resumes from the current application,
+network and mute state rather than continuing the prior animation frame.
+
+The host policy test verifies the priority ordering. Static host coverage is
+now 37 tests, plus the standalone expression policy test.
+
+Physical expression acceptance passed on 2026-07-26 with the placeholder PNG
+pack. The face remained upright, centered and complete on the round panel with
+no corruption or flicker. The normal wake, ASR, conversation and TTS path
+remained audible and complete during repeated state changes. A first hardware
+run exposed a roughly 310 ms synchronous first-decode delay on the listening
+path; core PNGs are now prewarmed before the audio service starts and server
+emotion hints are handed to the LVGL timer without taking the display lock on
+the audio state path. Subsequent listening expression changes measured 30 to
+100 ms, while recording no longer waits for the display refresh.
+
+The final uninterrupted run lasted 30 minutes under extensive Wi-Fi, ASR, TTS
+and expression switching. The five-minute warm baseline was 99,007 bytes of
+free internal-capable RAM and 5,226,828 bytes of free PSRAM. At minute 30, after
+the voice session had returned to idle, drift was 672 and 1,008 bytes
+respectively, both below the 8 KiB gate. Active voice/network samples showed
+temporary queue and decoder allocations but returned after the session; there
+was no monotonic growth, reset, watchdog, display fault or speaker underrun.
+Long listening windows did produce the existing input encode-queue
+"drop oldest" warning, without an audible playback defect; that audio
+backpressure is tracked separately from expression rendering.
+
+Short PWR presses fully stopped the expression refresh before backlight-off.
+Wake restored the current speaking/listening state without a stale frame or
+visible flash. The user confirmed the final idle face still had correct crop
+and orientation, and that continuous conversation had no pop, stutter or
+obvious missing speech. Final art requirements, including the planned
+speaking-interrupt transition and phone workflow states, are documented in
+`Images/Fuji_Expression_Asset_Requirements.md` at the repository root.
+
+The same test also found that the currently selected cloud TTS voice produced
+Japanese and Korean subtitles without audio, while French and German audio
+played normally. Since subtitle JSON and Opus audio are separate and the
+device decoder is language-agnostic, this remains a XiaoZhi TTS provider/voice
+language-coverage check rather than an embedded expression or codec failure.

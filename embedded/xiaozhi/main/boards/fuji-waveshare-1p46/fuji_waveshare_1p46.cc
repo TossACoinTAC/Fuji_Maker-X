@@ -48,7 +48,9 @@ private:
             auto* backlight = GetBacklight();
             if (backlight->brightness() == 0) {
                 backlight->RestoreBrightness();
+                GetDisplay()->SetPowerSaveMode(false);
             } else {
+                GetDisplay()->SetPowerSaveMode(true);
                 backlight->SetBrightness(0);
             }
         });
@@ -63,6 +65,7 @@ private:
                 codec->EnableInput(false);
                 GetDisplay()->SetStatus("POWER OFF");
                 vTaskDelay(pdMS_TO_TICKS(250));
+                GetDisplay()->SetPowerSaveMode(true);
                 GetBacklight()->SetBrightness(0);
 
                 while (gpio_get_level(POWER_BUTTON_GPIO) == 0) {

@@ -1,5 +1,6 @@
 import json
 import re
+import struct
 import unittest
 from pathlib import Path
 
@@ -209,6 +210,72 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertLess(
             constructor.index("InitializeWavesharePowerHold()"),
             constructor.index("InitializeMotionAndClock()"),
+        )
+
+    def test_expression_assets_are_rgba_320_square_placeholders(self):
+        assets = BOARD_DIR / "assets"
+        expected = {
+            f"fuji_{state}.png"
+            for state in (
+                "idle",
+                "listening",
+                "thinking",
+                "connecting",
+                "speaking",
+                "success",
+                "error",
+                "offline",
+                "muted",
+            )
+        }
+        self.assertEqual({path.name for path in assets.glob("*.png")}, expected)
+        for path in assets.glob("*.png"):
+            data = path.read_bytes()
+            self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+            width, height = struct.unpack(">II", data[16:24])
+            self.assertEqual((width, height), (320, 320))
+            self.assertIn(data[25], (4, 6), f"{path.name} must contain alpha")
+
+    def test_expression_controller_is_private_prioritized_and_power_aware(self):
+        cmake = (PROJECT_ROOT / "main/CMakeLists.txt").read_text(encoding="utf-8")
+        controller = (BOARD_DIR / "fuji_expression_controller.cc").read_text(
+            encoding="utf-8"
+        )
+        policy = (BOARD_DIR / "fuji_expression_policy.cc").read_text(encoding="utf-8")
+        board = (BOARD_DIR / "fuji_waveshare_1p46.cc").read_text(encoding="utf-8")
+        display = (BOARD_DIR / "waveshare_display.cc").read_text(encoding="utf-8")
+
+        self.assertIn("boards/fuji-waveshare-1p46/assets", cmake)
+        self.assertIn("MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT", controller)
+        expression_header = (BOARD_DIR / "fuji_expression_controller.h").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("kFramePeriodMs = 83", expression_header)
+        self.assertIn("PrewarmCoreAssets();", controller)
+        self.assertIn("lv_refr_now(nullptr)", controller)
+        self.assertIn("esp_timer_get_time()", controller)
+        self.assertIn("kMetricsPeriodUs", expression_header)
+        self.assertNotIn("kMetricsPeriodTicks", expression_header)
+        self.assertIn("warm_baseline", controller)
+        set_hint = controller.split(
+            "void FujiExpressionController::SetServerEmotionHint", maxsplit=1
+        )[1].split("void FujiExpressionController::SetScreenEnabled", maxsplit=1)[0]
+        self.assertIn("hint_.store", set_hint)
+        self.assertNotIn("Tick(", set_hint)
+        set_emotion = display.split(
+            "void SetEmotion(const char* emotion) override", maxsplit=1
+        )[1].split("void SetPowerSaveMode", maxsplit=1)[0]
+        self.assertNotIn("DisplayLockGuard", set_emotion)
+        self.assertLess(policy.index("!inputs.screen_enabled"), policy.index("inputs.fatal_error"))
+        self.assertLess(policy.index("inputs.fatal_error"), policy.index("inputs.offline"))
+        self.assertLess(policy.index("inputs.offline"), policy.index("inputs.muted"))
+        self.assertLess(policy.index("inputs.muted"), policy.index("inputs.activity"))
+        self.assertIn("expression_->SetScreenEnabled(!on)", display)
+
+        backlight_off = board.split("if (backlight->brightness() == 0)", maxsplit=1)[1]
+        self.assertLess(
+            backlight_off.index("SetPowerSaveMode(true)"),
+            backlight_off.index("SetBrightness(0)"),
         )
 
 
