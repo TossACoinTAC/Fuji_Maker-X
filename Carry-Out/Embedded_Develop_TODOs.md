@@ -102,8 +102,16 @@ Completed gates:
   three-minute run held internal RAM and PSRAM at their warm baselines, with
   zero reconnect-loop errors, protocol errors, reassembly timeouts or queue
   overflows. BOOT/PWR input and centered pairing-window text also remained
-  responsive. Numeric comparison with a newly unbound phone remains an open
-  hardware gate.
+  responsive.
+- Fresh numeric comparison and physical one-phone bond replacement passed on
+  2026-07-27. Long-pressing BOOT for two seconds while connected terminates the
+  old secure link, clears the stored NimBLE bond and its CCCDs, and opens the
+  bounded pairing window. The unbound iPhone displayed the same comparison code
+  as the centered device prompt; short BOOT confirmation completed the secure
+  bond, all subscriptions and ATT MTU 256 negotiation. A subsequent cold start
+  reconnected that bond automatically and restored a full snapshot. Bond-store
+  failures now close the pairing window instead of advertising a state that
+  cannot accept a replacement phone.
 - The deterministic phone-to-device BLE gate passed on 2026-07-27. A Debug-only
   Companion runner sent a valid `action_result`, the exact same `message_id`
   again, a deliberately incomplete two-fragment transfer separated by 5.1
@@ -119,6 +127,19 @@ Completed gates:
   PSRAM drift from the warm baseline, with no reset or HCI assertion. The same
   source passed 24 Swift unit tests, 7 UI tests, the embedded host/static tests,
   the full ESP-IDF build, and the signed Release arm64 iOS build.
+- The first private-audio coexistence gate passed on 2026-07-27 using an iPhone
+  15 Pro Max on iOS 26.5.2 and AirPods 4 (ANC), route name
+  `ACoin's AirPods`. TTS played only through the AirPods, background music
+  ducked and recovered, and Fuji BLE remained connected. Closing the charging
+  case during a long private announcement removed the private route without
+  moving speech to the iPhone or ESP32 speaker. This iOS/AirPods combination did
+  not deliver a route-disconnect interruption before AVSpeechSynthesizer
+  completed, so the run does not claim a measured immediate-stop latency; the
+  app now records this callback limitation separately from the required
+  no-public-output result. During more than 55 minutes of concurrent display,
+  Wi-Fi, BLE and audio activity, the expression monitor reported 420 bytes of
+  internal-RAM drift and 120 bytes of PSRAM drift from its warm baseline, with
+  no display fault, audio underrun, BLE queue overflow, reset or watchdog event.
 
 Build status:
 
@@ -933,11 +954,11 @@ Exit: all P0 state transitions can be demonstrated offline from touch, button, a
 
 - [x] Implement GATT service and characteristics on the embedded peripheral.
 - [x] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
-- [ ] Complete the remaining real-iPhone gate. Encrypted bonded reconnect,
+- [x] Complete the real-iPhone gate. Encrypted bonded reconnect,
       subscription restoration, device-to-phone capability/snapshot framing,
       and deterministic phone-to-device success/duplicate/timeout/cancel
-      exchanges now pass. Fresh numeric comparison remains to be validated
-      after deliberately clearing the current phone and board bonds.
+      exchanges pass. Fresh numeric comparison, physical bond replacement and
+      automatic bonded reconnect also pass on the reference iPhone.
 - [ ] Implement output_route_set and output_route_verified without assuming earphone presence.
 - [ ] Define a post-v1 bounded configuration channel for the device-supported
       wake/interruption model catalog and transactional selection; do not add it
@@ -959,9 +980,10 @@ Exit: Fuji completes a short local voice exchange and recovers from network loss
 
 - [ ] Add phone-side food-search request/response.
 - [ ] Add map handoff confirmation.
-- [ ] Add phone output-route verification.
-- [ ] Add earphone response routing through phone audio APIs.
-- [ ] Add music pause, duck, restore, and supported play/pause/next results.
+- [x] Add phone output-route verification.
+- [x] Add earphone response routing through phone audio APIs.
+- [x] Add music duck and restore for private TTS. Music transport commands remain
+      outside the current food vertical slice.
 - [ ] Inject earphone disconnects and confirm FACE_HAPTIC fallback.
 
 Exit: Fuji BLE and phone-earphone audio work simultaneously on the documented iPhone + AirPods reference pair.
