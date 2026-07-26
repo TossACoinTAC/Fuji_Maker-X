@@ -449,6 +449,12 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         application = (PROJECT_ROOT / "main/application.cc").read_text(encoding="utf-8")
         self.assertIn("make_state_snapshot", application)
         self.assertIn("PublishStateSnapshot()", application)
+        phone_message = application.split(
+            'ESP_LOGI(TAG, "Fuji phone message type=%s request=%s"', maxsplit=1
+        )[1].split("ble_callbacks.on_disconnect", maxsplit=1)[0]
+        self.assertIn("MessageType::kActionResult", phone_message)
+        self.assertIn("MessageType::kCancel", phone_message)
+        self.assertIn("PublishStateSnapshot()", phone_message)
         self.assertIn("PAIR CODE\\n%06lu\\nMatch? Press BOOT", application)
         initialize = application.split("void Application::Initialize()", maxsplit=1)[1].split(
             "void Application::StartFujiBleTransport()", maxsplit=1

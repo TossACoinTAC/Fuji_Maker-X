@@ -240,6 +240,10 @@ void Application::StartFujiBleTransport() {
             ESP_LOGI(TAG, "Fuji phone message type=%s request=%s",
                      FujiMessageTypeName(received.message.type),
                      received.message.request_id.value_or("none").c_str());
+            if (received.message.type == fuji::protocol::MessageType::kActionResult ||
+                received.message.type == fuji::protocol::MessageType::kCancel) {
+                fuji::ble::FujiBleTransport::GetInstance().PublishStateSnapshot();
+            }
         });
     };
     ble_callbacks.on_disconnect = [this]() {
