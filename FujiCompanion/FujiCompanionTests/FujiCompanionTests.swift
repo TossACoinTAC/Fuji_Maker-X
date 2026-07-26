@@ -166,6 +166,107 @@ private struct FixtureManifest: Decodable {
     let invalid: [InvalidFixture]
 }
 
+@Suite("Fuji BLE 会话")
+@MainActor
+struct FujiBLESessionTests {
+    @Test("MTU 23 分片重组并在重连后保持去重")
+    func reassemblyAndReconnectDeduplication() throws {
+        let session = FujiBLESession()
+        let message = FujiMessage.foodSearch(
+            criteria: .init(radiusM: 1_500, budgetRMB: 80, avoidTerms: ["花生"])
+        )
+        let json = try JSONEncoder().encode(message)
+        let firstTransfer = try FujiFramer.frames(for: json, mtu: 23, transferID: 1)
+
+        var received: FujiMessage?
+        for frame in firstTransfer {
+            received = try session.accept(frame, nowMS: 1_000) ?? received
+        }
+        #expect(received == message)
+
+        session.resetConnection()
+        let repeatedTransfer = try FujiFramer.frames(for: json, mtu: 23, transferID: 2)
+        #expect(throws: FujiMessageValidationError.protocolError(.duplicate)) {
+            for frame in repeatedTransfer {
+                _ = try session.accept(frame, nowMS: 1_001)
+            }
+        }
+
+        session.resetForRestart()
+        var acceptedAfterRestart: FujiMessage?
+        for frame in repeatedTransfer {
+            acceptedAfterRestart = try session.accept(frame, nowMS: 1_002) ?? acceptedAfterRestart
+        }
+        #expect(acceptedAfterRestart == message)
+    }
+
+    @Test("消息 TTL 从首个分片接收时刻计算")
+    func ttlStartsAtFirstFragment() throws {
+        let session = FujiBLESession()
+        let message = FujiMessage(
+            direction: .deviceToPhone,
+            type: .protocolError,
+            ttlMS: 1,
+            payload: .protocolError(.init(errorCode: .internalError, message: "test"))
+        )
+        let json = try JSONEncoder().encode(message)
+        let frames = try FujiFramer.frames(for: json, mtu: 23, transferID: 3)
+
+        _ = try session.accept(frames[0], nowMS: 10_000)
+        #expect(throws: FujiMessageValidationError.protocolError(.expired)) {
+            for frame in frames.dropFirst() {
+                _ = try session.accept(frame, nowMS: 10_001)
+            }
+        }
+    }
+
+    @Test("手机消息按 CoreBluetooth 写入长度分片")
+    func outboundUsesMaximumWriteLength() throws {
+        let session = FujiBLESession()
+        let requestID = UUID()
+        let message = FujiMessage.actionResult(
+            requestID: requestID,
+            result: .init(
+                action: .foodSearch,
+                status: .succeeded,
+                candidates: [.init(candidateID: "candidate-1", name: "测试餐馆", reason: "距离近")]
+            )
+        )
+
+        let frames = try session.frames(
+            for: message,
+            maximumWriteValueLength: 20,
+            transferID: 4
+        )
+        #expect(frames.count > 1)
+        #expect(frames.allSatisfy { $0.count <= 20 })
+
+        var assembler = FujiFrameAssembler()
+        var result: Data?
+        for frame in frames {
+            result = try assembler.accept(frame, nowMS: 20_000) ?? result
+        }
+        #expect(try JSONDecoder().decode(FujiMessage.self, from: result!) == message)
+    }
+
+    @Test("拒绝错误方向的设备入站消息")
+    func rejectsPhoneDirectionInbound() throws {
+        let session = FujiBLESession()
+        let message = FujiMessage.protocolError(.internalError, message: "wrong direction")
+        let frames = try FujiFramer.frames(
+            for: JSONEncoder().encode(message),
+            mtu: 185,
+            transferID: 5
+        )
+
+        #expect(throws: FujiMessageValidationError.protocolError(.invalidPayload)) {
+            for frame in frames {
+                _ = try session.accept(frame, nowMS: 30_000)
+            }
+        }
+    }
+}
+
 @Suite("餐馆排序")
 @MainActor
 struct RestaurantRankerTests {
