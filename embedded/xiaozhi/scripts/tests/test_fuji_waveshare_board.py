@@ -253,6 +253,10 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertIn("kFramePeriodMs = 83", expression_header)
         self.assertIn("PrewarmCoreAssets();", controller)
         self.assertIn("lv_refr_now(nullptr)", controller)
+        self.assertIn("ConfigureRoundNotification();", display)
+        self.assertIn("lv_obj_set_width(notification_label_, 260)", display)
+        self.assertIn("LV_LABEL_LONG_WRAP", display)
+        self.assertIn("notification_visible_until_us_", display)
         self.assertIn("esp_timer_get_time()", controller)
         self.assertIn("kMetricsPeriodUs", expression_header)
         self.assertNotIn("kMetricsPeriodTicks", expression_header)
@@ -264,7 +268,7 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertNotIn("Tick(", set_hint)
         set_emotion = display.split(
             "void SetEmotion(const char* emotion) override", maxsplit=1
-        )[1].split("void SetPowerSaveMode", maxsplit=1)[0]
+        )[1].split("void SetStatus", maxsplit=1)[0]
         self.assertNotIn("DisplayLockGuard", set_emotion)
         self.assertLess(policy.index("!inputs.screen_enabled"), policy.index("inputs.fatal_error"))
         self.assertLess(policy.index("inputs.fatal_error"), policy.index("inputs.offline"))
@@ -347,7 +351,7 @@ class FujiWaveshareBoardTests(unittest.TestCase):
             "CONFIG_BT_NIMBLE_NVS_PERSIST=y",
             "CONFIG_BT_NIMBLE_MAX_BONDS=2",
             "CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1",
-            "CONFIG_BT_NIMBLE_MAX_CCCDS=2",
+            "CONFIG_BT_NIMBLE_MAX_CCCDS=3",
             "CONFIG_BT_NIMBLE_50_FEATURE_SUPPORT=n",
             "CONFIG_BT_NIMBLE_DTM_MODE_TEST=n",
             "CONFIG_BT_CTRL_BLE_MAX_ACT=2",
@@ -384,29 +388,78 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         transport = (PROJECT_ROOT / "main/fuji_ble/fuji_ble_transport.cc").read_text(
             encoding="utf-8"
         )
-        for uuid_tail in (
-            "0x22, 0xbc, 0xa5, 0x0d",
-            "0x20, 0xfc, 0x3f, 0xa7",
-            "0x12, 0xb9, 0x7e, 0xa9",
-            "0xfd, 0xd1, 0xaf, 0xd0",
+        gatt = (PROJECT_ROOT / "main/fuji_ble/fuji_ble_gatt.h").read_text(
+            encoding="utf-8"
+        )
+        for uuid in (
+            "F157CFF7-0A18-4020-8CC0-CB1A0DA5BC22",
+            "43265B1A-2D59-40A3-BC4D-0E2FA73FFC20",
+            "FD1BA046-D0DD-415A-A757-A907E36AB912",
+            "6406E94B-8721-4CA7-ACE4-5E67D0AFD1FD",
         ):
-            self.assertIn(uuid_tail, transport)
+            self.assertIn(uuid, gatt)
+        self.assertIn("UuidToLittleEndian", gatt)
+        self.assertIn("MakeNimbleUuid(gatt::kEventUuidLittleEndian)", transport)
+        self.assertIn("MakeNimbleUuid(gatt::kStateUuidLittleEndian)", transport)
         self.assertIn("BLE_HS_IO_DISPLAY_YESNO", transport)
         self.assertIn("BLE_GATT_CHR_F_WRITE_AUTHEN", transport)
         self.assertIn("BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN", transport)
         self.assertIn("kPairingWindowUs = 120LL * 1000 * 1000", transport)
+        self.assertIn("kSubscriptionFallbackDelayUs = 1500LL * 1000", transport)
+        self.assertIn("kNotificationPacingDelayUs = 10LL * 1000", transport)
+        self.assertIn("mtu_ready_.store(true)", transport)
+        self.assertIn("initial report scheduled after MTU negotiation", transport)
+        clear_connection = transport.split(
+            "void FujiBleTransport::ClearConnectionState()", maxsplit=1
+        )[1].split("int FujiBleTransport::HandleGattAccess", maxsplit=1)[0]
+        self.assertIn("mtu_ready_.store(false)", clear_connection)
         self.assertIn("kMaximumAdvertisingBackoffMs = 60000", transport)
-        self.assertIn("KeepOnlyPeerBond(event->enc_change.conn_handle)", transport)
+        self.assertIn("MarkSecureConnectionReady(event->connect.conn_handle)", transport)
+        self.assertIn("MarkSecureConnectionReady(event->enc_change.conn_handle)", transport)
+        self.assertIn("KeepOnlyPeerBond(conn_handle)", transport)
+        self.assertIn("pairing_mode_.load() && peer_is_bonded", transport)
+        self.assertIn("holding existing bonded peer while pairing for a new phone", transport)
+        self.assertIn("rejecting_existing_bond_.store(pairing_mode_.load() && peer_is_bonded)", transport)
+        self.assertIn("ignoring encryption from existing bond during replacement pairing", transport)
         self.assertIn("ble_store_util_delete_peer(&peers[index])", transport)
+        pump = transport.split("void FujiBleTransport::PumpOutgoing()", maxsplit=1)[1].split(
+            "void FujiBleTransport::HandleTxComplete", maxsplit=1
+        )[0]
+        self.assertIn("!outgoing_ready_", pump)
+        self.assertIn("kind == OutgoingKind::kState", pump)
+        self.assertIn("esp_timer_start_once(outgoing_timer_, kNotificationPacingDelayUs)", pump)
+        first_gatt_send = min(
+            pump.index("ble_gatts_indicate_custom"),
+            pump.index("ble_gatts_notify_custom"),
+        )
+        self.assertIn("tx_call_in_progress_ = true", pump[:first_gatt_send])
+        self.assertIn("tx_call_in_progress_ = false", pump[first_gatt_send:])
+        self.assertNotIn("std::lock_guard<std::mutex> lock(mutex_);\n        while", pump)
+        gatt_read = transport.split(
+            "if (attr_handle == state_value_handle", maxsplit=1
+        )[1].split("return BLE_ATT_ERR_UNLIKELY;", maxsplit=1)[0]
+        self.assertNotIn("PublishStateSnapshot()", gatt_read)
 
         board = (BOARD_DIR / "fuji_waveshare_1p46.cc").read_text(encoding="utf-8")
         self.assertIn("Button>(BOOT_BUTTON_GPIO, false, 2000)", board)
         self.assertIn("ConfirmPendingComparison()", board)
         self.assertIn("EnterPairingMode()", board)
+        self.assertIn("BOOT short press", board)
+        self.assertIn("BOOT held for 2 seconds", board)
         application = (PROJECT_ROOT / "main/application.cc").read_text(encoding="utf-8")
         self.assertIn("make_state_snapshot", application)
         self.assertIn("PublishStateSnapshot()", application)
-        self.assertIn("PAIR %06lu - PRESS BOOT", application)
+        self.assertIn("PAIR CODE\\n%06lu\\nMatch? Press BOOT", application)
+        initialize = application.split("void Application::Initialize()", maxsplit=1)[1].split(
+            "void Application::StartFujiBleTransport()", maxsplit=1
+        )[0]
+        self.assertNotIn("fuji_ble.Start", initialize)
+        self.assertIn("board.StartNetwork();", initialize)
+        self.assertIn("Schedule([this]() { StartFujiBleTransport(); });", initialize)
+        connected = application.split(
+            "void Application::HandleNetworkConnectedEvent()", maxsplit=1
+        )[1].split("void Application::HandleNetworkDisconnectedEvent()", maxsplit=1)[0]
+        self.assertIn("StartFujiBleTransport();", connected)
 
 
 if __name__ == "__main__":

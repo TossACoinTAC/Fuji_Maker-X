@@ -1,9 +1,12 @@
+#include "fuji_ble_gatt.h"
 #include "fuji_ble_session.h"
 
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -30,6 +33,28 @@ std::vector<std::vector<uint8_t>> Encode(const std::string& json, std::size_t mt
     CHECK(fuji::protocol::EncodeFrames(bytes, mtu, id, &frames) ==
           fuji::protocol::ErrorCode::kNone);
     return frames;
+}
+
+std::string CanonicalUuid(const std::array<uint8_t, 16>& little_endian) {
+    std::ostringstream stream;
+    stream << std::uppercase << std::hex << std::setfill('0');
+    for (std::size_t index = 0; index < little_endian.size(); ++index) {
+        if (index == 4 || index == 6 || index == 8 || index == 10) {
+            stream << '-';
+        }
+        stream << std::setw(2)
+               << static_cast<unsigned>(little_endian[little_endian.size() - 1 - index]);
+    }
+    return stream.str();
+}
+
+void TestGattUuidsMatchProtocol() {
+    using namespace fuji::ble::gatt;
+    CHECK(kSchemaVersion == 2);
+    CHECK(CanonicalUuid(kServiceUuidLittleEndian) == kServiceUuid);
+    CHECK(CanonicalUuid(kCommandUuidLittleEndian) == kCommandUuid);
+    CHECK(CanonicalUuid(kEventUuidLittleEndian) == kEventUuid);
+    CHECK(CanonicalUuid(kStateUuidLittleEndian) == kStateUuid);
 }
 
 fuji::protocol::ErrorCode Feed(fuji::ble::InboundSession* session,
@@ -102,6 +127,7 @@ void TestReassemblyTimeoutIsClassifiedSeparately() {
 }  // namespace
 
 int main() {
+    TestGattUuidsMatchProtocol();
     TestValidAndDuplicateAcrossReconnect();
     TestDirectionAndDisconnectReset();
     TestMessageTtlStartsAtFirstChunk();

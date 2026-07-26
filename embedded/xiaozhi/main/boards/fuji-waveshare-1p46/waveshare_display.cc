@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <memory>
 
@@ -44,6 +45,7 @@ public:
         lv_obj_set_size(emoji_box_, 320, 320);
         expression_ = std::make_unique<FujiExpressionController>(emoji_box_);
         expression_->SetScreenEnabled(!power_save_);
+        ConfigureRoundNotification();
         lv_display_add_event_cb(display_, AlignInvalidatedArea, LV_EVENT_INVALIDATE_AREA, nullptr);
         lv_indev_t* input = lv_indev_create();
         lv_indev_set_type(input, LV_INDEV_TYPE_POINTER);
@@ -58,6 +60,24 @@ public:
             return;
         }
         expression_->SetServerEmotionHint(emotion);
+    }
+
+    void SetStatus(const char* status) override {
+        if (esp_timer_get_time() < notification_visible_until_us_.load()) {
+            return;
+        }
+        SpiLcdDisplay::SetStatus(status);
+    }
+
+    void ShowNotification(const char* notification, int duration_ms = 3000) override {
+        notification_visible_until_us_.store(esp_timer_get_time() +
+                                             static_cast<int64_t>(std::max(duration_ms, 0)) * 1000);
+        SpiLcdDisplay::ShowNotification(notification, duration_ms);
+        DisplayLockGuard lock(this);
+        if (notification_label_ != nullptr) {
+            lv_obj_align(notification_label_, LV_ALIGN_CENTER, 0, 0);
+            lv_obj_move_foreground(notification_label_);
+        }
     }
 
     void SetPowerSaveMode(bool on) override {
@@ -76,6 +96,24 @@ public:
     }
 
 private:
+    void ConfigureRoundNotification() {
+        if (notification_label_ == nullptr || emoji_box_ == nullptr) {
+            return;
+        }
+        lv_obj_set_parent(notification_label_, emoji_box_);
+        lv_obj_set_width(notification_label_, 260);
+        lv_obj_set_height(notification_label_, LV_SIZE_CONTENT);
+        lv_label_set_long_mode(notification_label_, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(notification_label_, lv_color_hex(0x17211D), 0);
+        lv_obj_set_style_bg_color(notification_label_, lv_color_hex(0xEAF3EF), 0);
+        lv_obj_set_style_bg_opa(notification_label_, LV_OPA_90, 0);
+        lv_obj_set_style_pad_all(notification_label_, 12, 0);
+        lv_obj_set_style_radius(notification_label_, 12, 0);
+        lv_obj_align(notification_label_, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_move_foreground(notification_label_);
+    }
+
     static void AlignInvalidatedArea(lv_event_t* event) {
         auto* area = static_cast<lv_area_t*>(lv_event_get_param(event));
         area->x1 = (area->x1 >> 2) << 2;
@@ -112,6 +150,7 @@ private:
     std::unique_ptr<FujiExpressionController> expression_;
     bool power_save_ = false;
     int64_t last_barge_in_touch_at_us_ = 0;
+    std::atomic<int64_t> notification_visible_until_us_{0};
 };
 
 constexpr uint16_t WireRgb565(uint16_t color) {

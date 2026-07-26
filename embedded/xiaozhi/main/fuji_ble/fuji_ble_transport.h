@@ -74,12 +74,15 @@ private:
     static void PairingTimerCallback(void* argument);
     static void ReconnectTimerCallback(void* argument);
     static void MetricsTimerCallback(void* argument);
+    static void SubscriptionReadyTimerCallback(void* argument);
+    static void OutgoingTimerCallback(void* argument);
 
     bool RegisterGattService();
     void StartAdvertising();
     void ScheduleAdvertisingBackoff();
     void HandlePairingTimeout();
     bool ConnectionIsAuthenticated(uint16_t conn_handle) const;
+    bool MarkSecureConnectionReady(uint16_t conn_handle);
     bool PeerIsBonded(uint16_t conn_handle) const;
     void KeepOnlyPeerBond(uint16_t conn_handle);
     void ClearConnectionState();
@@ -107,18 +110,26 @@ private:
     std::atomic<bool> pairing_mode_{false};
     std::atomic<bool> pending_comparison_{false};
     std::atomic<bool> secure_connection_{false};
+    std::atomic<bool> mtu_ready_{false};
+    std::atomic<bool> gatt_cache_invalidation_pending_{false};
+    std::atomic<bool> rejecting_existing_bond_{false};
     std::atomic<uint16_t> connection_handle_{0xffff};
     uint16_t comparison_connection_handle_ = 0xffff;
     uint32_t comparison_number_ = 0;
     std::atomic<uint8_t> own_address_type_{0};
     bool event_subscribed_ = false;
     bool state_subscribed_ = false;
+    bool outgoing_ready_ = false;
+    bool capability_report_queued_ = false;
+    bool tx_call_in_progress_ = false;
     std::atomic<uint32_t> next_transfer_id_{1};
     std::atomic<uint32_t> advertising_backoff_ms_{1000};
     std::atomic<int64_t> pairing_deadline_us_{0};
     esp_timer_handle_t pairing_timer_ = nullptr;
     esp_timer_handle_t reconnect_timer_ = nullptr;
     esp_timer_handle_t metrics_timer_ = nullptr;
+    esp_timer_handle_t subscription_ready_timer_ = nullptr;
+    esp_timer_handle_t outgoing_timer_ = nullptr;
 };
 
 }  // namespace fuji::ble

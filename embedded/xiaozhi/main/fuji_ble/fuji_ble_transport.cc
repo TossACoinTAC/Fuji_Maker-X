@@ -1,5 +1,8 @@
 #include "fuji_ble_transport.h"
 
+#include "fuji_ble_gatt.h"
+#include "settings.h"
+
 #include <esp_app_desc.h>
 #include <esp_log.h>
 #include <esp_random.h>
@@ -32,17 +35,23 @@ namespace {
 constexpr char kTag[] = "FujiBle";
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
 constexpr int64_t kPairingWindowUs = 120LL * 1000 * 1000;
+constexpr int64_t kSubscriptionReadyDelayUs = 20LL * 1000;
+constexpr int64_t kSubscriptionFallbackDelayUs = 1500LL * 1000;
+constexpr int64_t kNotificationPacingDelayUs = 10LL * 1000;
 constexpr std::size_t kMaximumQueuedEvents = 8;
 constexpr uint32_t kMaximumAdvertisingBackoffMs = 60000;
 
-const ble_uuid128_t kServiceUuid = BLE_UUID128_INIT(0x22, 0xbc, 0xa5, 0x0d, 0x1a, 0xcb, 0xc0, 0x8c,
-                                                    0x20, 0x40, 0x18, 0x0a, 0xf7, 0xcf, 0x57, 0xf1);
-const ble_uuid128_t kCommandUuid = BLE_UUID128_INIT(0x20, 0xfc, 0x3f, 0xa7, 0x2f, 0x0e, 0x4d, 0xbc,
-                                                    0xa3, 0x40, 0x59, 0x2d, 0x1a, 0x5b, 0x26, 0x43);
-const ble_uuid128_t kEventUuid = BLE_UUID128_INIT(0x12, 0xb9, 0x7e, 0xa9, 0x07, 0xa9, 0x57, 0xa7,
-                                                  0x15, 0x4a, 0xdd, 0xd0, 0x46, 0xa0, 0x1b, 0xfd);
-const ble_uuid128_t kStateUuid = BLE_UUID128_INIT(0xfd, 0xd1, 0xaf, 0xd0, 0x67, 0x5e, 0xe4, 0x5e,
-                                                  0xa7, 0x4c, 0x21, 0x87, 0x4b, 0xe9, 0x06, 0x64);
+ble_uuid128_t MakeNimbleUuid(const std::array<uint8_t, 16>& bytes) {
+    ble_uuid128_t uuid = {};
+    uuid.u.type = BLE_UUID_TYPE_128;
+    std::copy(bytes.begin(), bytes.end(), uuid.value);
+    return uuid;
+}
+
+const ble_uuid128_t kServiceUuid = MakeNimbleUuid(gatt::kServiceUuidLittleEndian);
+const ble_uuid128_t kCommandUuid = MakeNimbleUuid(gatt::kCommandUuidLittleEndian);
+const ble_uuid128_t kEventUuid = MakeNimbleUuid(gatt::kEventUuidLittleEndian);
+const ble_uuid128_t kStateUuid = MakeNimbleUuid(gatt::kStateUuidLittleEndian);
 
 uint16_t command_value_handle = 0;
 uint16_t event_value_handle = 0;
@@ -138,9 +147,25 @@ bool FujiBleTransport::Start(Callbacks callbacks) {
         .name = "fuji_ble_metrics",
         .skip_unhandled_events = true,
     };
+    const esp_timer_create_args_t subscription_ready_args = {
+        .callback = SubscriptionReadyTimerCallback,
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "fuji_ble_subscribed",
+        .skip_unhandled_events = true,
+    };
+    const esp_timer_create_args_t outgoing_args = {
+        .callback = OutgoingTimerCallback,
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "fuji_ble_outgoing",
+        .skip_unhandled_events = true,
+    };
     if (esp_timer_create(&pairing_args, &pairing_timer_) != ESP_OK ||
         esp_timer_create(&reconnect_args, &reconnect_timer_) != ESP_OK ||
-        esp_timer_create(&metrics_args, &metrics_timer_) != ESP_OK) {
+        esp_timer_create(&metrics_args, &metrics_timer_) != ESP_OK ||
+        esp_timer_create(&subscription_ready_args, &subscription_ready_timer_) != ESP_OK ||
+        esp_timer_create(&outgoing_args, &outgoing_timer_) != ESP_OK) {
         ESP_LOGE(kTag, "failed to create BLE timers");
         started_.store(false);
         return false;
@@ -206,6 +231,20 @@ void FujiBleTransport::HandleHostSync() {
     host_synced_.store(true);
     int bond_count = 0;
     ble_store_util_count(BLE_STORE_OBJ_TYPE_PEER_SEC, &bond_count);
+    {
+        Settings settings("fuji_ble", true);
+        const int32_t stored_schema_version = settings.GetInt("gatt_schema", 0);
+        if (stored_schema_version != gatt::kSchemaVersion) {
+            if (bond_count > 0) {
+                gatt_cache_invalidation_pending_.store(true);
+                ESP_LOGI(kTag, "GATT schema changed %ld -> %ld; awaiting cache subscriber",
+                         static_cast<long>(stored_schema_version),
+                         static_cast<long>(gatt::kSchemaVersion));
+            } else {
+                settings.SetInt("gatt_schema", gatt::kSchemaVersion);
+            }
+        }
+    }
     if (bond_count == 0) {
         EnterPairingMode();
     } else {
@@ -230,6 +269,7 @@ bool FujiBleTransport::EnterPairingMode() {
         }
         const uint16_t connection_handle = connection_handle_.load();
         if (connection_handle != kNoConnection) {
+            rejecting_existing_bond_.store(PeerIsBonded(connection_handle));
             ble_gap_terminate(connection_handle, BLE_ERR_REM_USER_CONN_TERM);
         } else {
             StartAdvertising();
@@ -273,6 +313,7 @@ void FujiBleTransport::MetricsTimerCallback(void* argument) {
 
 void FujiBleTransport::HandlePairingTimeout() {
     pairing_mode_.store(false);
+    rejecting_existing_bond_.store(false);
     uint16_t comparison_handle = kNoConnection;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -365,9 +406,20 @@ int FujiBleTransport::HandleGapEvent(ble_gap_event* event) {
                 return 0;
             }
             connection_handle_.store(event->connect.conn_handle);
-            if (!pairing_mode_.load() && !PeerIsBonded(event->connect.conn_handle)) {
+            const bool peer_is_bonded = PeerIsBonded(event->connect.conn_handle);
+            rejecting_existing_bond_.store(pairing_mode_.load() && peer_is_bonded);
+            if (pairing_mode_.load() && peer_is_bonded) {
+                ESP_LOGI(kTag, "holding existing bonded peer while pairing for a new phone");
+                ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+                return 0;
+            }
+            if (!pairing_mode_.load() && !peer_is_bonded) {
                 ESP_LOGW(kTag, "rejecting unbonded peer outside pairing window");
                 ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+                return 0;
+            }
+            if (MarkSecureConnectionReady(event->connect.conn_handle)) {
+                ESP_LOGI(kTag, "connection established; authenticated bond already active");
                 return 0;
             }
             const int result = ble_gap_security_initiate(event->connect.conn_handle);
@@ -391,23 +443,18 @@ int FujiBleTransport::HandleGapEvent(ble_gap_event* event) {
             }
             return 0;
         case BLE_GAP_EVENT_ENC_CHANGE:
+            if (pairing_mode_.load() && rejecting_existing_bond_.load()) {
+                ESP_LOGI(kTag, "ignoring encryption from existing bond during replacement pairing");
+                ble_gap_terminate(event->enc_change.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+                return 0;
+            }
             if (event->enc_change.status != 0 ||
-                !ConnectionIsAuthenticated(event->enc_change.conn_handle)) {
+                !MarkSecureConnectionReady(event->enc_change.conn_handle)) {
                 ESP_LOGE(kTag, "authenticated encryption failed status=%d",
                          event->enc_change.status);
                 ble_gap_terminate(event->enc_change.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
                 return 0;
             }
-            secure_connection_.store(true);
-            advertising_backoff_ms_.store(1000);
-            KeepOnlyPeerBond(event->enc_change.conn_handle);
-            if (pairing_mode_.exchange(false)) {
-                esp_timer_stop(pairing_timer_);
-                if (callbacks_.on_pairing_window_changed) {
-                    callbacks_.on_pairing_window_changed(false);
-                }
-            }
-            ESP_LOGI(kTag, "secure bonded connection ready");
             return 0;
         case BLE_GAP_EVENT_PASSKEY_ACTION: {
             if (event->passkey.params.action != BLE_SM_IOACT_NUMCMP || !pairing_mode_.load()) {
@@ -443,31 +490,90 @@ int FujiBleTransport::HandleGapEvent(ble_gap_event* event) {
             return BLE_GAP_REPEAT_PAIRING_RETRY;
         }
         case BLE_GAP_EVENT_SUBSCRIBE: {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (event->subscribe.attr_handle == event_value_handle) {
-                event_subscribed_ = event->subscribe.cur_indicate;
-                if (event_subscribed_) {
-                    QueueEventLocked(MakeCapabilityReport());
+            ESP_LOGI(kTag, "subscription attr=%u notify=%u indicate=%u",
+                     event->subscribe.attr_handle, event->subscribe.cur_notify,
+                     event->subscribe.cur_indicate);
+            bool invalidate_gatt_cache = false;
+            bool schedule_initial_report = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (event->subscribe.attr_handle == event_value_handle) {
+                    event_subscribed_ = event->subscribe.cur_indicate;
+                } else if (event->subscribe.attr_handle == state_value_handle) {
+                    state_subscribed_ = event->subscribe.cur_notify;
+                    if (state_subscribed_ && latest_state_json_.has_value()) {
+                        pending_state_json_ = latest_state_json_;
+                    }
+                } else if (event->subscribe.cur_indicate) {
+                    invalidate_gatt_cache = gatt_cache_invalidation_pending_.exchange(false);
                 }
-            } else if (event->subscribe.attr_handle == state_value_handle) {
-                state_subscribed_ = event->subscribe.cur_notify;
-                if (state_subscribed_ && latest_state_json_.has_value()) {
-                    pending_state_json_ = latest_state_json_;
-                }
+                schedule_initial_report =
+                    event_subscribed_ && state_subscribed_ && !capability_report_queued_;
             }
-        }
-            PumpOutgoing();
+            if (invalidate_gatt_cache) {
+                Settings settings("fuji_ble", true);
+                const int32_t stored_schema_version = settings.GetInt("gatt_schema", 0);
+                ble_svc_gatt_changed(0x0001, 0xffff);
+                settings.SetInt("gatt_schema", gatt::kSchemaVersion);
+                ESP_LOGI(kTag, "GATT cache invalidation sent for schema %ld -> %ld",
+                         static_cast<long>(stored_schema_version),
+                         static_cast<long>(gatt::kSchemaVersion));
+            }
+            if (schedule_initial_report && subscription_ready_timer_ != nullptr) {
+                esp_timer_stop(subscription_ready_timer_);
+                const int64_t delay_us = mtu_ready_.load() ? kSubscriptionReadyDelayUs
+                                                           : kSubscriptionFallbackDelayUs;
+                esp_timer_start_once(subscription_ready_timer_, delay_us);
+                ESP_LOGI(kTag, "initial report scheduled in %lld ms%s",
+                         static_cast<long long>(delay_us / 1000),
+                         mtu_ready_.load() ? "" : " (MTU fallback)");
+            }
             return 0;
+        }
         case BLE_GAP_EVENT_NOTIFY_TX:
             HandleTxComplete(event->notify_tx.attr_handle, event->notify_tx.indication,
                              event->notify_tx.status);
             return 0;
-        case BLE_GAP_EVENT_MTU:
+        case BLE_GAP_EVENT_MTU: {
+            mtu_ready_.store(true);
             ESP_LOGI(kTag, "ATT MTU=%u", event->mtu.value);
+            bool schedule_initial_report = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                schedule_initial_report = secure_connection_.load() && event_subscribed_ &&
+                                          state_subscribed_ && !capability_report_queued_;
+            }
+            if (schedule_initial_report && subscription_ready_timer_ != nullptr) {
+                esp_timer_stop(subscription_ready_timer_);
+                esp_timer_start_once(subscription_ready_timer_, kSubscriptionReadyDelayUs);
+                ESP_LOGI(kTag, "initial report scheduled after MTU negotiation");
+            }
             return 0;
+        }
         default:
             return 0;
     }
+}
+
+void FujiBleTransport::SubscriptionReadyTimerCallback(void* argument) {
+    auto* transport = static_cast<FujiBleTransport*>(argument);
+    {
+        std::lock_guard<std::mutex> lock(transport->mutex_);
+        if (!transport->secure_connection_.load() || !transport->event_subscribed_ ||
+            !transport->state_subscribed_ || transport->capability_report_queued_) {
+            return;
+        }
+        if (!transport->QueueEventLocked(transport->MakeCapabilityReport())) {
+            return;
+        }
+        transport->capability_report_queued_ = true;
+        transport->outgoing_ready_ = true;
+    }
+    transport->PumpOutgoing();
+}
+
+void FujiBleTransport::OutgoingTimerCallback(void* argument) {
+    static_cast<FujiBleTransport*>(argument)->PumpOutgoing();
 }
 
 bool FujiBleTransport::ConnectionIsAuthenticated(uint16_t conn_handle) const {
@@ -476,17 +582,41 @@ bool FujiBleTransport::ConnectionIsAuthenticated(uint16_t conn_handle) const {
            description.sec_state.authenticated && description.sec_state.bonded;
 }
 
+bool FujiBleTransport::MarkSecureConnectionReady(uint16_t conn_handle) {
+    if (!ConnectionIsAuthenticated(conn_handle)) {
+        return false;
+    }
+    connection_handle_.store(conn_handle);
+    const bool was_secure = secure_connection_.exchange(true);
+    rejecting_existing_bond_.store(false);
+    advertising_backoff_ms_.store(1000);
+    KeepOnlyPeerBond(conn_handle);
+    if (pairing_mode_.exchange(false)) {
+        esp_timer_stop(pairing_timer_);
+        if (callbacks_.on_pairing_window_changed) {
+            callbacks_.on_pairing_window_changed(false);
+        }
+    }
+    if (!was_secure) {
+        ESP_LOGI(kTag, "secure bonded connection ready handle=%u", conn_handle);
+    }
+    PumpOutgoing();
+    return true;
+}
+
 bool FujiBleTransport::PeerIsBonded(uint16_t conn_handle) const {
     ble_gap_conn_desc description = {};
     if (ble_gap_conn_find(conn_handle, &description) != 0) {
         return false;
     }
-    std::array<ble_addr_t, 1> peers = {};
+    std::array<ble_addr_t, 2> peers = {};
     int count = 0;
     if (ble_store_util_bonded_peers(peers.data(), &count, peers.size()) != 0) {
         return false;
     }
-    return count == 1 && SameAddress(peers[0], description.peer_id_addr);
+    return std::any_of(peers.begin(), peers.begin() + count, [&](const ble_addr_t& peer) {
+        return SameAddress(peer, description.peer_id_addr);
+    });
 }
 
 void FujiBleTransport::KeepOnlyPeerBond(uint16_t conn_handle) {
@@ -507,18 +637,30 @@ void FujiBleTransport::KeepOnlyPeerBond(uint16_t conn_handle) {
 }
 
 void FujiBleTransport::ClearConnectionState() {
+    if (subscription_ready_timer_ != nullptr) {
+        esp_timer_stop(subscription_ready_timer_);
+    }
+    if (outgoing_timer_ != nullptr) {
+        esp_timer_stop(outgoing_timer_);
+    }
     std::lock_guard<std::mutex> lock(mutex_);
     connection_handle_.store(kNoConnection);
     secure_connection_.store(false);
+    mtu_ready_.store(false);
     pending_comparison_.store(false);
     comparison_connection_handle_ = kNoConnection;
     comparison_number_ = 0;
     event_subscribed_ = false;
     state_subscribed_ = false;
+    outgoing_ready_ = false;
+    capability_report_queued_ = false;
     inbound_.ResetConnection();
     event_queue_.clear();
     pending_state_json_.reset();
     active_transfer_.reset();
+    if (!pairing_mode_.load()) {
+        rejecting_existing_bond_.store(false);
+    }
 }
 
 int FujiBleTransport::HandleGattAccess(uint16_t conn_handle, uint16_t attr_handle,
@@ -541,7 +683,6 @@ int FujiBleTransport::HandleGattAccess(uint16_t conn_handle, uint16_t attr_handl
         return 0;
     }
     if (attr_handle == state_value_handle && context->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-        PublishStateSnapshot();
         std::optional<std::string> snapshot;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -638,65 +779,116 @@ void FujiBleTransport::PublishStateSnapshot() {
 }
 
 void FujiBleTransport::PumpOutgoing() {
-    std::lock_guard<std::mutex> lock(mutex_);
     while (true) {
-        const uint16_t connection_handle = connection_handle_.load();
-        if (!secure_connection_.load() || connection_handle == kNoConnection) {
-            return;
-        }
-        if (!active_transfer_.has_value()) {
-            std::optional<std::string> json;
-            OutgoingKind kind = OutgoingKind::kEvent;
-            if (event_subscribed_ && !event_queue_.empty()) {
-                json = std::move(event_queue_.front());
-                event_queue_.pop_front();
-            } else if (state_subscribed_ && pending_state_json_.has_value()) {
-                kind = OutgoingKind::kState;
-                json = std::move(pending_state_json_);
-                pending_state_json_.reset();
-            }
-            if (!json.has_value()) {
+        const uint16_t observed_connection_handle = connection_handle_.load();
+        const uint16_t mtu = observed_connection_handle == kNoConnection
+                                 ? 23
+                                 : ble_att_mtu(observed_connection_handle);
+        uint16_t connection_handle = kNoConnection;
+        uint16_t attribute_handle = 0;
+        uint32_t transfer_id = 0;
+        std::size_t frame_index = 0;
+        OutgoingKind kind = OutgoingKind::kEvent;
+        std::vector<uint8_t> frame;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            connection_handle = connection_handle_.load();
+            if (!secure_connection_.load() || connection_handle == kNoConnection ||
+                !outgoing_ready_) {
                 return;
             }
-            const std::vector<uint8_t> bytes(json->begin(), json->end());
-            std::vector<std::vector<uint8_t>> frames;
-            const uint16_t mtu = ble_att_mtu(connection_handle);
-            const uint32_t transfer_id = next_transfer_id_.fetch_add(1);
-            if (protocol::EncodeFrames(bytes, mtu, transfer_id, &frames) !=
-                protocol::ErrorCode::kNone) {
-                metrics_.protocol_errors.fetch_add(1);
+            if (tx_call_in_progress_) {
+                return;
+            }
+            if (connection_handle != observed_connection_handle) {
                 continue;
             }
-            active_transfer_ = ActiveTransfer{kind, transfer_id, std::move(frames)};
+            if (!active_transfer_.has_value()) {
+                std::optional<std::string> json;
+                if (event_subscribed_ && !event_queue_.empty()) {
+                    json = std::move(event_queue_.front());
+                    event_queue_.pop_front();
+                } else if (state_subscribed_ && pending_state_json_.has_value()) {
+                    kind = OutgoingKind::kState;
+                    json = std::move(pending_state_json_);
+                    pending_state_json_.reset();
+                }
+                if (!json.has_value()) {
+                    return;
+                }
+                const std::vector<uint8_t> bytes(json->begin(), json->end());
+                std::vector<std::vector<uint8_t>> frames;
+                transfer_id = next_transfer_id_.fetch_add(1);
+                if (protocol::EncodeFrames(bytes, mtu, transfer_id, &frames) !=
+                    protocol::ErrorCode::kNone) {
+                    metrics_.protocol_errors.fetch_add(1);
+                    continue;
+                }
+                active_transfer_ = ActiveTransfer{kind, transfer_id, std::move(frames)};
+            }
+            ActiveTransfer& transfer = *active_transfer_;
+            if (transfer.waiting_for_tx || transfer.next_frame >= transfer.frames.size()) {
+                return;
+            }
+            kind = transfer.kind;
+            transfer_id = transfer.transfer_id;
+            frame_index = transfer.next_frame;
+            frame = transfer.frames[frame_index];
+            attribute_handle =
+                kind == OutgoingKind::kEvent ? event_value_handle : state_value_handle;
+            transfer.waiting_for_tx = true;
+            tx_call_in_progress_ = true;
         }
-        ActiveTransfer& transfer = *active_transfer_;
-        if (transfer.waiting_for_tx || transfer.next_frame >= transfer.frames.size()) {
-            return;
-        }
-        const std::vector<uint8_t>& frame = transfer.frames[transfer.next_frame];
+
         os_mbuf* packet = ble_hs_mbuf_from_flat(frame.data(), frame.size());
         if (packet == nullptr) {
-            metrics_.queue_overflows.fetch_add(1);
-            DropActiveTransferLocked();
+            std::lock_guard<std::mutex> lock(mutex_);
+            tx_call_in_progress_ = false;
+            if (active_transfer_.has_value() &&
+                active_transfer_->transfer_id == transfer_id &&
+                active_transfer_->next_frame == frame_index) {
+                metrics_.queue_overflows.fetch_add(1);
+                DropActiveTransferLocked();
+            }
             continue;
         }
-        transfer.waiting_for_tx = true;
-        const int result =
-            transfer.kind == OutgoingKind::kEvent
-                ? ble_gatts_indicate_custom(connection_handle, event_value_handle, packet)
-                : ble_gatts_notify_custom(connection_handle, state_value_handle, packet);
-        if (result == 0) {
+
+        const int result = kind == OutgoingKind::kEvent
+                               ? ble_gatts_indicate_custom(connection_handle, attribute_handle, packet)
+                               : ble_gatts_notify_custom(connection_handle, attribute_handle, packet);
+        bool continue_pumping = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            tx_call_in_progress_ = false;
+            if (result != 0 && active_transfer_.has_value() &&
+                active_transfer_->transfer_id == transfer_id &&
+                active_transfer_->next_frame == frame_index) {
+                ESP_LOGW(kTag, "outgoing frame failed: %d", result);
+                active_transfer_->waiting_for_tx = false;
+                metrics_.queue_overflows.fetch_add(1);
+                DropActiveTransferLocked();
+                continue_pumping = true;
+            } else if (result == 0) {
+                // Notifications complete synchronously in NimBLE. Their callback advances the
+                // transfer while tx_call_in_progress_ prevents recursive PumpOutgoing calls.
+                continue_pumping = !active_transfer_.has_value() ||
+                                   !active_transfer_->waiting_for_tx;
+            }
+        }
+        if (!continue_pumping) {
             return;
         }
-        ESP_LOGW(kTag, "outgoing frame failed: %d", result);
-        transfer.waiting_for_tx = false;
-        metrics_.queue_overflows.fetch_add(1);
-        DropActiveTransferLocked();
+        if (result == 0 && kind == OutgoingKind::kState && outgoing_timer_ != nullptr) {
+            esp_timer_stop(outgoing_timer_);
+            esp_timer_start_once(outgoing_timer_, kNotificationPacingDelayUs);
+            return;
+        }
     }
 }
 
 void FujiBleTransport::HandleTxComplete(uint16_t attr_handle, bool indication, int status) {
     bool should_pump = false;
+    bool tx_call_in_progress = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!active_transfer_.has_value()) {
@@ -724,8 +916,9 @@ void FujiBleTransport::HandleTxComplete(uint16_t attr_handle, bool indication, i
             }
             should_pump = true;
         }
+        tx_call_in_progress = tx_call_in_progress_;
     }
-    if (should_pump) {
+    if (should_pump && !tx_call_in_progress) {
         PumpOutgoing();
     }
 }

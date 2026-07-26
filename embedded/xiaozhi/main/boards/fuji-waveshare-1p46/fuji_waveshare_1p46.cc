@@ -39,6 +39,7 @@ private:
     void InitializeButtons() {
         boot_button_ = std::make_unique<Button>(BOOT_BUTTON_GPIO, false, 2000);
         boot_button_->OnClick([this]() {
+            ESP_LOGI(TAG, "BOOT short press");
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 EnterWifiConfigMode();
@@ -53,12 +54,15 @@ private:
             app.ToggleChatState();
         });
 #if CONFIG_FUJI_BLE_TRANSPORT
-        boot_button_->OnLongPress(
-            []() { fuji::ble::FujiBleTransport::GetInstance().EnterPairingMode(); });
+        boot_button_->OnLongPress([]() {
+            ESP_LOGI(TAG, "BOOT held for 2 seconds; entering BLE pairing mode");
+            fuji::ble::FujiBleTransport::GetInstance().EnterPairingMode();
+        });
 #endif
 
         power_button_ = std::make_unique<Button>(POWER_BUTTON_GPIO, false, 3000);
         power_button_->OnClick([this]() {
+            ESP_LOGI(TAG, "PWR short press");
             auto* backlight = GetBacklight();
             if (backlight->brightness() == 0) {
                 backlight->RestoreBrightness();
