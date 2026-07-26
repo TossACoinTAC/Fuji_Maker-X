@@ -35,9 +35,10 @@ in their standard system locations.
 
 The complete food flow runs through `MockDeviceTransport`: request, nearby
 search, up to three recommendations, private TTS, explicit confirmation, and
-walking navigation. Production BLE GATT and provisioning remain behind
-`DeviceTransport`; the business layer has no board name, GATT UUID, or BluFi
-dependency.
+walking navigation. `CoreBluetoothDeviceTransport` now implements the encrypted
+Fuji protocol-v1 GATT link, while the same business layer retains
+`MockDeviceTransport` for deterministic tests. The business layer has no board
+name or BluFi dependency.
 
 Location is requested only when a search starts and raw coordinates are not
 persisted. AMap SDK setup happens only after the user accepts its privacy notice.
@@ -58,10 +59,15 @@ xcodebuild -workspace FujiCompanion.xcworkspace \
   CODE_SIGNING_ALLOWED=NO build-for-testing
 ```
 
-Verified on 2026-07-25 with an iPhone 15 Pro Max simulator running iOS 26.5:
-all 13 unit tests and all 4 functional UI flows passed. Debug and Release
+Verified on 2026-07-27 with an iPhone 15 Pro Max simulator running iOS 26.5:
+all 28 unit tests and all 7 functional UI flows passed. Debug and Release
 arm64 device builds also passed; the signed Debug app was installed and launched
 on an iPhone 15 Pro Max running iOS 26.5.2.
 
-Real AMap queries, navigation fallback, and AirPods routing/ducking still need
-interactive Release-device verification before release.
+AirPods private TTS, music duck/restore and no-public-output behavior after
+route loss passed with AirPods 4 (ANC), route `ACoin's AirPods`, while the Fuji
+BLE link remained connected. This iOS/AirPods combination removed the route but
+did not deliver a route-disconnect interruption before AVSpeechSynthesizer
+completed, so immediate-stop callback latency is not claimed. Real AMap queries
+and Apple/AMap navigation fallback still need interactive Release-device
+verification before release.
