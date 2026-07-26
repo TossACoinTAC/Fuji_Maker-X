@@ -1,5 +1,6 @@
 #include "waveshare_display.h"
 
+#include "application.h"
 #include "backlight.h"
 #include "config.h"
 #include "display/lcd_display.h"
@@ -47,7 +48,7 @@ public:
         lv_indev_t* input = lv_indev_create();
         lv_indev_set_type(input, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(input, ReadTouchInput);
-        lv_indev_set_user_data(input, touch_);
+        lv_indev_set_user_data(input, this);
         lv_indev_set_display(input, display_);
     }
 
@@ -68,6 +69,12 @@ public:
         expression_->SetScreenEnabled(!on);
     }
 
+    void SetBargeInTransition() override {
+        if (expression_ != nullptr) {
+            expression_->TriggerBargeInTransition();
+        }
+    }
+
 private:
     static void AlignInvalidatedArea(lv_event_t* event) {
         auto* area = static_cast<lv_area_t*>(lv_event_get_param(event));
@@ -77,23 +84,34 @@ private:
     }
 
     static void ReadTouchInput(lv_indev_t* input, lv_indev_data_t* data) {
-        auto* touch = static_cast<Spd2010Touch*>(lv_indev_get_user_data(input));
+        auto* self = static_cast<RoundLcdDisplay*>(lv_indev_get_user_data(input));
         data->state = LV_INDEV_STATE_RELEASED;
-        if (touch == nullptr || !touch->interrupt_asserted()) {
+        if (self == nullptr || self->touch_ == nullptr ||
+            !self->touch_->interrupt_asserted()) {
             return;
         }
         Spd2010Touch::Point point;
-        if (!touch->ReadPoint(point)) {
+        if (!self->touch_->ReadPoint(point)) {
             return;
         }
         data->point.x = point.x;
         data->point.y = point.y;
         data->state = LV_INDEV_STATE_PRESSED;
+
+        const int64_t now_us = esp_timer_get_time();
+        if (!self->power_save_ &&
+            now_us - self->last_barge_in_touch_at_us_ >= kTouchDebounceUs &&
+            Application::GetInstance().GetDeviceState() == kDeviceStateSpeaking) {
+            self->last_barge_in_touch_at_us_ = now_us;
+            Application::GetInstance().BargeIn();
+        }
     }
 
+    static constexpr int64_t kTouchDebounceUs = 600 * 1000;
     Spd2010Touch* touch_;
     std::unique_ptr<FujiExpressionController> expression_;
     bool power_save_ = false;
+    int64_t last_barge_in_touch_at_us_ = 0;
 };
 
 constexpr uint16_t WireRgb565(uint16_t color) {

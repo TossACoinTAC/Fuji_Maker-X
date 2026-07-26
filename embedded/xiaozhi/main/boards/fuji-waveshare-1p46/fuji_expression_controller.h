@@ -20,6 +20,7 @@ public:
 
     void SetServerEmotionHint(const char* emotion);
     void SetScreenEnabled(bool enabled);
+    void TriggerBargeInTransition();
 
 private:
     struct HeapDeleter {
@@ -33,6 +34,7 @@ private:
     };
 
     static constexpr uint32_t kFramePeriodMs = 83;
+    static constexpr int64_t kInterruptingDurationUs = 166 * 1000;
     static constexpr int64_t kMetricsPeriodUs = 60LL * 1000 * 1000;
 
     static void TimerCallback(lv_timer_t* timer);
@@ -66,11 +68,13 @@ private:
     std::unique_ptr<LvglGif> gif_;
     FujiExpression current_ = FujiExpression::kCount;
     std::atomic<FujiExpression> hint_{FujiExpression::kIdle};
+    std::atomic<int64_t> interrupting_request_until_us_{0};
     bool screen_enabled_ = true;
     bool using_asset_ = false;
     uint8_t frame_ = 0;
     uint16_t uptime_minutes_ = 0;
     int64_t next_metrics_at_us_ = 0;
+    int64_t interrupting_until_us_ = 0;
     size_t warm_internal_free_ = 0;
     size_t warm_psram_free_ = 0;
 };

@@ -278,6 +278,54 @@ class FujiWaveshareBoardTests(unittest.TestCase):
             backlight_off.index("SetBrightness(0)"),
         )
 
+    def test_barge_in_stops_playback_before_listening_and_has_touch_fallback(self):
+        application = (PROJECT_ROOT / "main/application.cc").read_text(encoding="utf-8")
+        application_header = (PROJECT_ROOT / "main/application.h").read_text(
+            encoding="utf-8"
+        )
+        audio = (PROJECT_ROOT / "main/audio/audio_service.cc").read_text(
+            encoding="utf-8"
+        )
+        audio_header = (PROJECT_ROOT / "main/audio/audio_service.h").read_text(
+            encoding="utf-8"
+        )
+        display = (BOARD_DIR / "waveshare_display.cc").read_text(encoding="utf-8")
+        controller = (BOARD_DIR / "fuji_expression_controller.cc").read_text(
+            encoding="utf-8"
+        )
+        controller_header = (BOARD_DIR / "fuji_expression_controller.h").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("MAIN_EVENT_BARGE_IN", application_header)
+        self.assertIn("MAIN_EVENT_VOICE_CAPTURE_READY", application_header)
+        self.assertIn("PerformBargeIn(kAbortReasonWakeWordDetected", application)
+        barge_in = application.split("void Application::PerformBargeIn", maxsplit=1)[1].split(
+            "void Application::SetListeningMode", maxsplit=1
+        )[0]
+        self.assertLess(barge_in.index("AbortSpeaking(reason)"), barge_in.index("SetListeningMode"))
+        self.assertLess(barge_in.index("SetListeningMode"), barge_in.index("InterruptPlayback()"))
+        self.assertIn('"barge-in playback silent latency=%lld ms"', application)
+        self.assertIn('"barge-in microphone ready latency=%lld ms"', application)
+
+        self.assertIn("void InterruptPlayback();", audio_header)
+        interrupt = audio.split("void AudioService::InterruptPlayback()", maxsplit=1)[1].split(
+            "bool AudioService::IsPlaybackDrainedLocked", maxsplit=1
+        )[0]
+        self.assertLess(interrupt.index("ResetDecoder()"), interrupt.index("EnableOutput(false)"))
+        self.assertIn("on_voice_capture_ready", audio_header)
+        self.assertIn("voice_capture_ready_pending_.exchange(false)", audio)
+        self.assertIn("task->playback_generation == playback_generation_.load()", audio)
+        self.assertIn("barge_in_waiting_for_capture_ ? 0 : 120", application)
+
+        self.assertIn("Application::GetInstance().BargeIn();", display)
+        self.assertIn("kTouchDebounceUs", display)
+        self.assertIn("kDeviceStateSpeaking", display)
+        self.assertIn("FujiExpression::kInterrupting", controller)
+        self.assertIn("TriggerBargeInTransition", controller)
+        self.assertIn("SetBargeInTransition", application)
+        self.assertIn("kInterruptingDurationUs = 166 * 1000", controller_header)
+
 
 if __name__ == "__main__":
     unittest.main()

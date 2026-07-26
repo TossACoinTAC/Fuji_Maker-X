@@ -82,6 +82,8 @@ struct AudioServiceCallbacks {
     std::function<void(void)> on_audio_testing_queue_full;
     // Fired when the decode/playback queues and their in-flight work are drained.
     std::function<void(void)> on_playback_drained;
+    // Fired after voice processing captures its first microphone frame.
+    std::function<void(void)> on_voice_capture_ready;
 };
 
 
@@ -95,6 +97,7 @@ struct AudioTask {
     AudioTaskType type;
     std::vector<int16_t> pcm;
     uint32_t timestamp = 0;
+    uint32_t playback_generation = 0;
 };
 
 struct DebugStatistics {
@@ -124,7 +127,7 @@ public:
     bool IsAfeWakeWord();
 
     void EnableWakeWordDetection(bool enable);
-    void EnableVoiceProcessing(bool enable);
+    void EnableVoiceProcessing(bool enable, uint32_t warmup_ms = 120);
     void EnableAudioTesting(bool enable);
     void EnableDeviceAec(bool enable);
 
@@ -135,6 +138,7 @@ public:
     void PlaySound(const std::string_view& sound);
     bool ReadAudioData(std::vector<int16_t>& data, int sample_rate, int samples);
     void ResetDecoder();
+    void InterruptPlayback();
     void SetModelsList(srmodel_list_t* models_list);
 
 private:
@@ -177,7 +181,7 @@ private:
     bool decode_in_flight_ = false;
     bool output_in_flight_ = false;
     bool playback_drained_notified_ = true;
-    uint32_t playback_generation_ = 0;
+    std::atomic<uint32_t> playback_generation_{0};
     // For server AEC
     std::deque<uint32_t> timestamp_queue_;
 
@@ -189,7 +193,8 @@ private:
     bool device_aec_enabled_ = false;
 #endif
     std::atomic<bool> service_stopped_{true};
-    std::atomic<bool> audio_input_need_warmup_{false};
+    std::atomic<uint32_t> audio_input_warmup_ms_{0};
+    std::atomic<bool> voice_capture_ready_pending_{false};
 
     esp_timer_handle_t audio_power_timer_ = nullptr;
     std::chrono::steady_clock::time_point last_input_time_;

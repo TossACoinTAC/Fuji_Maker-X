@@ -17,6 +17,7 @@ enum class FujiExpression {
     kThinking,
     kConnecting,
     kSpeaking,
+    kInterrupting,
     kSuccess,
     kError,
     kOffline,
