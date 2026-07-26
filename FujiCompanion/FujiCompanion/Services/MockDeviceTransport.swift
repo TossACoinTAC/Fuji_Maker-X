@@ -7,6 +7,7 @@ final class MockDeviceTransport: DeviceTransport {
     private let continuation: AsyncStream<DeviceTransportEvent>.Continuation
     private(set) var sentMessages: [FujiMessage] = []
     private let connectsSuccessfully: Bool
+    private var sentMessageIDs: [UUID] = []
 
     init(connectsSuccessfully: Bool = true) {
         self.connectsSuccessfully = connectsSuccessfully
@@ -33,6 +34,35 @@ final class MockDeviceTransport: DeviceTransport {
             throw MockTransportError.disconnected
         }
         sentMessages.append(message)
+        if sentMessageIDs.contains(message.messageID) {
+            continuation.yield(
+                .message(
+                    .protocolError(
+                        .duplicate,
+                        message: "Mock rejected duplicate message",
+                        direction: .deviceToPhone
+                    )
+                )
+            )
+            return
+        }
+        sentMessageIDs.append(message.messageID)
+        if sentMessageIDs.count > 128 {
+            sentMessageIDs.removeFirst(sentMessageIDs.count - 128)
+        }
+        if message.type == .actionResult || message.type == .cancel {
+            continuation.yield(
+                .stateSnapshot(
+                    .init(
+                        deviceState: .idle,
+                        activeRequestID: nil,
+                        earphonesVerified: false,
+                        firmwareVersion: "mock",
+                        capabilities: ["food_search", "start_navigation"]
+                    )
+                )
+            )
+        }
     }
 
     func simulateFoodRequest() {
@@ -50,6 +80,26 @@ final class MockDeviceTransport: DeviceTransport {
         continuation.yield(.connectionChanged(state))
     }
 }
+
+#if DEBUG
+extension MockDeviceTransport: DeviceTransportDiagnostics {
+    func sendIncompleteTransferForTimeout(_ message: FujiMessage) async throws {
+        guard connectionState == .connected else {
+            throw MockTransportError.disconnected
+        }
+        sentMessages.append(message)
+        continuation.yield(
+            .message(
+                .protocolError(
+                    .expired,
+                    message: "Mock reassembly timed out",
+                    direction: .deviceToPhone
+                )
+            )
+        )
+    }
+}
+#endif
 
 enum MockTransportError: LocalizedError {
     case disconnected

@@ -211,6 +211,54 @@ struct DeviceConnectionHistoryTests {
     }
 }
 
+#if DEBUG
+@Suite("确定性 BLE 链路测试")
+@MainActor
+struct BLETransportDiagnosticTests {
+    @Test("真实与 Mock transport 共用成功重复超时取消断线编排")
+    func runsDeterministicTransportSequence() async {
+        let transport = MockDeviceTransport()
+        let suiteName = "FujiCompanionTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let model = FujiAppModel(
+            environment: AppEnvironment(
+                settings: AppSettings(defaults: defaults),
+                audioRouteMonitor: AudioRouteMonitor(),
+                transport: transport,
+                locationProvider: FixtureLocationService(),
+                restaurantSearch: FixtureRestaurantSearchService(),
+                navigationLauncher: FixtureNavigationService(),
+                speechOutput: FixtureSpeechOutput()
+            )
+        )
+
+        model.start()
+        await model.runBLETransportTest()
+
+        #expect(model.statusMessage == "蓝牙链路测试通过")
+        #expect(model.presentedError == nil)
+        #expect(!model.isBLETransportTestRunning)
+        #expect(model.bleTransportTestResult?.succeeded == true)
+        #expect(model.bleTransportTestResult?.message.contains("断线恢复") == true)
+        #expect(transport.sentMessages.count == 4)
+        #expect(transport.sentMessages[0].messageID == transport.sentMessages[1].messageID)
+        #expect(transport.sentMessages[2].type == .actionResult)
+        #expect(transport.sentMessages[3].type == .cancel)
+        let titles = Set(model.activity.map(\.title))
+        for expected in [
+            "BLE 成功路径通过",
+            "BLE 重复路径通过",
+            "BLE 超时路径通过",
+            "BLE 取消路径通过",
+            "BLE 链路测试通过"
+        ] {
+            #expect(titles.contains(expected))
+        }
+    }
+}
+#endif
+
 @Suite("Fuji BLE 会话")
 @MainActor
 struct FujiBLESessionTests {

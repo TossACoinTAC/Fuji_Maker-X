@@ -51,6 +51,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         let id: UUID
         let frames: [Data]
         var nextFrameIndex: Int
+        let interFrameDelay: Duration?
+        let timeout: Duration
         let continuation: CheckedContinuation<Void, Error>
     }
 
@@ -81,6 +83,7 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
     private var queuedWrites: [QueuedWrite] = []
     private var activeWrite: QueuedWrite?
     private var writeTimeoutTask: Task<Void, Never>?
+    private var delayedWriteTask: Task<Void, Never>?
     private var metrics = Metrics()
 
     init(defaults: UserDefaults = .standard) {
@@ -107,6 +110,7 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         connectionSetupTimeoutTask?.cancel()
         inboundTimeoutTask?.cancel()
         writeTimeoutTask?.cancel()
+        delayedWriteTask?.cancel()
         eventContinuation.finish()
     }
 
@@ -130,6 +134,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         scanTimeoutTask = nil
         connectionSetupTimeoutTask?.cancel()
         connectionSetupTimeoutTask = nil
+        delayedWriteTask?.cancel()
+        delayedWriteTask = nil
         if centralManager.state == .poweredOn {
             centralManager.stopScan()
         }
@@ -145,6 +151,37 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
 
     func send(_ message: FujiMessage) async throws {
         guard connectionState == .connected,
+              let peripheral else {
+            throw CoreBluetoothTransportError.disconnected
+        }
+        let maximumWriteValueLength = peripheral.maximumWriteValueLength(for: .withResponse)
+        let frames = try makeFrames(for: message, maximumWriteValueLength: maximumWriteValueLength)
+        try await enqueue(
+            frames: frames,
+            interFrameDelay: nil,
+            timeout: Self.writeTimeout
+        )
+    }
+
+    private func makeFrames(
+        for message: FujiMessage,
+        maximumWriteValueLength: Int
+    ) throws -> [Data] {
+        let transferID = nextTransferID
+        nextTransferID &+= 1
+        return try session.frames(
+            for: message,
+            maximumWriteValueLength: maximumWriteValueLength,
+            transferID: transferID
+        )
+    }
+
+    private func enqueue(
+        frames: [Data],
+        interFrameDelay: Duration?,
+        timeout: Duration
+    ) async throws {
+        guard connectionState == .connected,
               let peripheral,
               let commandCharacteristic else {
             throw CoreBluetoothTransportError.disconnected
@@ -155,21 +192,14 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
             throw CoreBluetoothTransportError.outgoingQueueFull
         }
 
-        let maximumWriteValueLength = peripheral.maximumWriteValueLength(for: .withResponse)
-        let transferID = nextTransferID
-        nextTransferID &+= 1
-        let frames = try session.frames(
-            for: message,
-            maximumWriteValueLength: maximumWriteValueLength,
-            transferID: transferID
-        )
-
         try await withCheckedThrowingContinuation { continuation in
             queuedWrites.append(
                 QueuedWrite(
                     id: UUID(),
                     frames: frames,
                     nextFrameIndex: 0,
+                    interFrameDelay: interFrameDelay,
+                    timeout: timeout,
                     continuation: continuation
                 )
             )
@@ -296,6 +326,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         inboundTimeoutTask?.cancel()
         inboundTimeoutTask = nil
         inboundDeadlineMS = nil
+        delayedWriteTask?.cancel()
+        delayedWriteTask = nil
     }
 
     private func resetCharacteristics() {
@@ -402,7 +434,7 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         guard let activeWrite else { return }
         writeTimeoutTask?.cancel()
         writeTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.writeTimeout)
+            try? await Task.sleep(for: activeWrite.timeout)
             guard !Task.isCancelled else { return }
             self?.expireWrite(id: activeWrite.id)
         }
@@ -439,6 +471,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
     private func finishActiveWrite(_ result: Result<Void, Error>) {
         guard let completed = activeWrite else { return }
         activeWrite = nil
+        delayedWriteTask?.cancel()
+        delayedWriteTask = nil
         writeTimeoutTask?.cancel()
         writeTimeoutTask = nil
         completed.continuation.resume(with: result)
@@ -448,6 +482,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
     }
 
     private func failAllWrites(with error: Error) {
+        delayedWriteTask?.cancel()
+        delayedWriteTask = nil
         writeTimeoutTask?.cancel()
         writeTimeoutTask = nil
         if let activeWrite {
@@ -676,8 +712,39 @@ extension CoreBluetoothDeviceTransport: CBPeripheralDelegate {
         self.activeWrite = activeWrite
         if activeWrite.nextFrameIndex >= activeWrite.frames.count {
             finishActiveWrite(.success(()))
+        } else if let delay = activeWrite.interFrameDelay {
+            let writeID = activeWrite.id
+            delayedWriteTask?.cancel()
+            delayedWriteTask = Task { [weak self] in
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled,
+                      let self,
+                      self.activeWrite?.id == writeID,
+                      let peripheral = self.peripheral,
+                      let commandCharacteristic = self.commandCharacteristic else { return }
+                self.writeCurrentFrame(
+                    peripheral: peripheral,
+                    characteristic: commandCharacteristic
+                )
+            }
         } else if let commandCharacteristic {
             writeCurrentFrame(peripheral: peripheral, characteristic: commandCharacteristic)
         }
     }
 }
+
+#if DEBUG
+extension CoreBluetoothDeviceTransport: DeviceTransportDiagnostics {
+    func sendIncompleteTransferForTimeout(_ message: FujiMessage) async throws {
+        let frames = try makeFrames(for: message, maximumWriteValueLength: 20)
+        guard frames.count > 2 else {
+            throw CoreBluetoothTransportError.operationFailed("Diagnostic message did not fragment")
+        }
+        try await enqueue(
+            frames: Array(frames.prefix(2)),
+            interFrameDelay: .milliseconds(5_100),
+            timeout: .seconds(7)
+        )
+    }
+}
+#endif

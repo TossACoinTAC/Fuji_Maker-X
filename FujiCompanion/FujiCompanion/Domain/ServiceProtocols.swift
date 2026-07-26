@@ -30,6 +30,13 @@ protocol DeviceTransport: AnyObject {
     func send(_ message: FujiMessage) async throws
 }
 
+#if DEBUG
+@MainActor
+protocol DeviceTransportDiagnostics: AnyObject {
+    func sendIncompleteTransferForTimeout(_ message: FujiMessage) async throws
+}
+#endif
+
 @MainActor
 protocol LocationProviding: AnyObject {
     var authorizationLabel: String { get }

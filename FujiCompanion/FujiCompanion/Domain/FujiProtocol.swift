@@ -335,13 +335,29 @@ struct FujiMessage: Equatable, Identifiable {
         )
     }
 
-    static func protocolError(
-        _ code: FujiProtocolErrorCode,
-        message: String,
+    static func cancel(
+        requestID: UUID,
+        reason: String? = nil,
+        direction: FujiDirection = .phoneToDevice,
         ttlMS: Int = 30_000
     ) -> FujiMessage {
         FujiMessage(
-            direction: .phoneToDevice,
+            requestID: requestID,
+            direction: direction,
+            type: .cancel,
+            ttlMS: ttlMS,
+            payload: .cancel(.init(targetRequestID: requestID, reason: reason))
+        )
+    }
+
+    static func protocolError(
+        _ code: FujiProtocolErrorCode,
+        message: String,
+        direction: FujiDirection = .phoneToDevice,
+        ttlMS: Int = 30_000
+    ) -> FujiMessage {
+        FujiMessage(
+            direction: direction,
             type: .protocolError,
             ttlMS: ttlMS,
             payload: .protocolError(.init(errorCode: code, message: message))
