@@ -102,8 +102,23 @@ Completed gates:
   three-minute run held internal RAM and PSRAM at their warm baselines, with
   zero reconnect-loop errors, protocol errors, reassembly timeouts or queue
   overflows. BOOT/PWR input and centered pairing-window text also remained
-  responsive. Numeric comparison with a newly unbound phone and a real
-  phone-to-device command/result exchange remain open hardware gates.
+  responsive. Numeric comparison with a newly unbound phone remains an open
+  hardware gate.
+- The deterministic phone-to-device BLE gate passed on 2026-07-27. A Debug-only
+  Companion runner sent a valid `action_result`, the exact same `message_id`
+  again, a deliberately incomplete two-fragment transfer separated by 5.1
+  seconds, a `cancel`, and an intentional disconnect/reconnect. The board
+  returned a full snapshot for the valid result and cancel, rejected the
+  duplicate as `duplicate`, expired the partial transfer as `expired`, cleared
+  volatile phone state on disconnect, and restored the encrypted subscriptions
+  and full snapshot at ATT MTU 256. Three physical iterations completed with
+  the same result; the final app also retained an explicit green pass result in
+  Settings. The expected diagnostic protocol-error/reassembly counters advanced
+  once per injected case, while queue overflow stayed at zero. After eight
+  minutes the expression monitor reported 108 bytes internal-RAM drift and zero
+  PSRAM drift from the warm baseline, with no reset or HCI assertion. The same
+  source passed 24 Swift unit tests, 7 UI tests, the embedded host/static tests,
+  the full ESP-IDF build, and the signed Release arm64 iOS build.
 
 Build status:
 
@@ -919,9 +934,10 @@ Exit: all P0 state transitions can be demonstrated offline from touch, button, a
 - [x] Implement GATT service and characteristics on the embedded peripheral.
 - [x] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
 - [ ] Complete the remaining real-iPhone gate. Encrypted bonded reconnect,
-      subscription restoration and device-to-phone capability/snapshot framing
-      now pass; fresh numeric comparison plus a phone-to-device command/result
-      exchange remain to be validated.
+      subscription restoration, device-to-phone capability/snapshot framing,
+      and deterministic phone-to-device success/duplicate/timeout/cancel
+      exchanges now pass. Fresh numeric comparison remains to be validated
+      after deliberately clearing the current phone and board bonds.
 - [ ] Implement output_route_set and output_route_verified without assuming earphone presence.
 - [ ] Define a post-v1 bounded configuration channel for the device-supported
       wake/interruption model catalog and transactional selection; do not add it
