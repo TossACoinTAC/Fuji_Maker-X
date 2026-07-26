@@ -83,6 +83,8 @@ final class FujiAppModel {
 #if DEBUG
     private(set) var isBLETransportTestRunning = false
     private(set) var bleTransportTestResult: (succeeded: Bool, message: String)?
+    private(set) var isPrivateAudioTestRunning = false
+    private(set) var privateAudioTestResult: (succeeded: Bool, message: String)?
 #endif
 
     private let transport: DeviceTransport
@@ -228,6 +230,68 @@ final class FujiAppModel {
             presentedError = message
             record("BLE 链路测试失败", detail: message, kind: .error)
         }
+    }
+
+    func runPrivateAudioTest(expectRouteLoss: Bool) async {
+        guard !isPrivateAudioTestRunning else { return }
+        guard audioRouteMonitor.isPrivateRouteAvailable else {
+            privateAudioTestResult = (false, "失败：未检测到私密耳机路由")
+            return
+        }
+
+        isPrivateAudioTestRunning = true
+        privateAudioTestResult = nil
+        let routeName = audioRouteMonitor.routeName
+        let testName = expectRouteLoss ? "耳机断开保护" : "AirPods 私密播报"
+        record("开始\(testName)测试", detail: routeName, kind: .device)
+        defer { isPrivateAudioTestRunning = false }
+
+        let text: String
+        if expectRouteLoss {
+            text = Array(
+                repeating: "这是 Fuji 耳机中途断开测试。播报期间断开 AirPods，语音应立即停止。",
+                count: 5
+            ).joined(separator: " ")
+        } else {
+            text = "Fuji AirPods 私密播报测试。背景音乐应暂时降低音量，并在这段语音结束后恢复。"
+        }
+        let outcome = await speechOutput.speak(text, policy: .privateOnly)
+
+        switch (expectRouteLoss, outcome) {
+        case (false, .spoken):
+            privateAudioTestResult = (true, "通过：已通过 \(routeName) 完成私密播报")
+        case (true, .routeLost):
+            privateAudioTestResult = (true, "通过：耳机断开后播报已立即停止")
+        case (true, .spoken):
+            let routeWasRemoved = await waitForPrivateRouteLoss()
+            privateAudioTestResult = routeWasRemoved
+                ? (true, "通过：系统已移除耳机路由，未切换到公开输出；未收到播报中断回调")
+                : (false, "失败：播报结束后仍未检测到耳机断开")
+        case (false, .routeLost):
+            privateAudioTestResult = (false, "失败：播报期间耳机路由丢失")
+        case (_, .privateRouteUnavailable):
+            privateAudioTestResult = (false, "失败：私密耳机路由不可用")
+        case (_, .failed(let message)):
+            privateAudioTestResult = (false, "失败：\(message)")
+        }
+
+        if let result = privateAudioTestResult {
+            record(
+                result.succeeded ? "\(testName)测试通过" : "\(testName)测试失败",
+                detail: result.message,
+                kind: result.succeeded ? .action : .error
+            )
+        }
+    }
+
+    private func waitForPrivateRouteLoss() async -> Bool {
+        for _ in 0..<50 {
+            if !audioRouteMonitor.isPrivateRouteAvailable {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return !audioRouteMonitor.isPrivateRouteAvailable
     }
 
     private func waitForDiagnostic(

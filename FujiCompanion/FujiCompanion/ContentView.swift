@@ -517,6 +517,44 @@ private struct SettingsView: View {
                         .foregroundStyle(result.succeeded ? Color.green : Color.red)
                         .accessibilityIdentifier("debug.bleTransportTestResult")
                     }
+
+                    Button {
+                        Task { await model.runPrivateAudioTest(expectRouteLoss: false) }
+                    } label: {
+                        Label("测试 AirPods 私密播报", systemImage: "airpodspro")
+                    }
+                    .disabled(
+                        !model.audioRouteMonitor.isPrivateRouteAvailable ||
+                            model.isPrivateAudioTestRunning
+                    )
+                    .accessibilityIdentifier("debug.runPrivateAudioTest")
+
+                    Button {
+                        Task { await model.runPrivateAudioTest(expectRouteLoss: true) }
+                    } label: {
+                        Label("测试耳机中途断开", systemImage: "ear.badge.waveform")
+                    }
+                    .disabled(
+                        !model.audioRouteMonitor.isPrivateRouteAvailable ||
+                            model.isPrivateAudioTestRunning
+                    )
+                    .accessibilityIdentifier("debug.runPrivateAudioRouteLossTest")
+
+                    if model.isPrivateAudioTestRunning {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityLabel("AirPods 音频测试进行中")
+                    } else if let result = model.privateAudioTestResult {
+                        Label(
+                            result.message,
+                            systemImage: result.succeeded
+                                ? "checkmark.circle.fill"
+                                : "xmark.octagon.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(result.succeeded ? Color.green : Color.red)
+                        .accessibilityIdentifier("debug.privateAudioTestResult")
+                    }
                 }
 #endif
 
