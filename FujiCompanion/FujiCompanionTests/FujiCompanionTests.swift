@@ -1,4 +1,5 @@
 import MapKit
+import AVFoundation
 import Testing
 @testable import FujiCompanion
 
@@ -164,6 +165,64 @@ private struct FixtureManifest: Decodable {
 
     let valid: [String]
     let invalid: [InvalidFixture]
+}
+
+@Suite("私密音频路由")
+struct SpeechRoutePolicyTests {
+    @Test("AirPods 音频端口被识别为私密路由")
+    func recognizesBluetoothAudioPorts() {
+        #expect(SpeechRoutePolicy.hasPrivateRoute(portTypes: [.bluetoothA2DP]))
+        #expect(SpeechRoutePolicy.hasPrivateRoute(portTypes: [.bluetoothHFP]))
+        #expect(SpeechRoutePolicy.hasPrivateRoute(portTypes: [.bluetoothLE]))
+    }
+
+    @Test("手机扬声器不被识别为私密路由")
+    func rejectsPhoneSpeaker() {
+        #expect(!SpeechRoutePolicy.hasPrivateRoute(portTypes: [.builtInSpeaker]))
+        #expect(!SpeechRoutePolicy.hasPrivateRoute(portTypes: []))
+    }
+
+    @Test("旧 AirPods 不可用时即使当前路由尚未刷新也停止")
+    func stopsOnUnavailablePreviousAirPodsRoute() {
+        #expect(
+            SpeechRoutePolicy.shouldStopAfterRouteChange(
+                policy: .privateOnly,
+                reason: .oldDeviceUnavailable,
+                previousPortTypes: [.bluetoothA2DP],
+                currentPortTypes: [.bluetoothA2DP]
+            )
+        )
+        #expect(
+            !SpeechRoutePolicy.shouldStopAfterRouteChange(
+                policy: .allowPhoneSpeaker,
+                reason: .oldDeviceUnavailable,
+                previousPortTypes: [.bluetoothA2DP],
+                currentPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    @Test("系统路由断开中断只在 began 时识别")
+    func recognizesRouteDisconnectInterruption() {
+        #expect(
+            SpeechRoutePolicy.isRouteDisconnectInterruption(
+                type: .began,
+                reason: .routeDisconnected
+            )
+        )
+        #expect(
+            !SpeechRoutePolicy.isRouteDisconnectInterruption(
+                type: .ended,
+                reason: .routeDisconnected
+            )
+        )
+        #expect(
+            !SpeechRoutePolicy.isRouteDisconnectInterruption(
+                type: .began,
+                reason: .default
+            )
+        )
+    }
 }
 
 @Suite("设备连接记录")
