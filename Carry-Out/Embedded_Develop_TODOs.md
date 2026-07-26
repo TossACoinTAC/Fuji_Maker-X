@@ -70,6 +70,76 @@ Completed gates:
   audible underrun, correct expression behavior, and normal completion. There
   was no reset or watchdog event; the BOOT button remains reserved for later
   BLE pairing behavior.
+- The embedded side of the Fuji protocol-v1 BLE transport reached its device
+  smoke gate on 2026-07-26. The normal firmware exposes the fixed encrypted
+  command/event/snapshot GATT service through NimBLE with LE Secure
+  Connections numeric comparison, a 120-second pairing window, one-phone bond
+  pruning, bounded framing/queues, monotonic TTL handling, disconnect cleanup,
+  snapshot recovery and transport metrics. Long-pressing BOOT reopened the
+  pairing window without triggering chat, while short press remained reserved
+  for numeric-comparison confirmation during pairing.
+- BLE, the iPhone Wi-Fi hotspot, MQTT, wake recognition, cloud speech, the
+  expression layer, screen-tap barge-in and backlight control ran together on
+  the physical board. The first build exposed internal-memory pressure
+  (`EspUdp errno=12`, one audio queue drop, 355-byte minimum free SRAM); moving
+  the low-throughput NimBLE host allocations to PSRAM and disabling unused
+  roles/features raised the observed minimum to 47,683 bytes. The repeated
+  voice/barge-in run then had no UDP allocation failure, audio queue drop,
+  protocol error, reassembly timeout or BLE queue overflow, and the user
+  confirmed normal visual and audible behavior. That device-only run did not
+  claim the joint iPhone gates; subsequent real-iPhone validation is recorded
+  below.
+- The bonded-iPhone reconnect slice passed on 2026-07-27. The Companion restored
+  its encrypted event/state subscriptions after controlled ESP32 resets and
+  showed `Fuji connected`; its timestamps matched each intentional disconnect
+  and recovery. Firmware now completes the first Wi-Fi scan before enabling
+  BLE, waits for ATT MTU negotiation (with a bounded MTU-23 fallback) before
+  opening the outgoing gate, sends the capability report before the snapshot,
+  and paces snapshot notifications. This removed both the synchronous NimBLE
+  callback deadlock and an HCI event-buffer assertion found during device
+  testing. Two final cold starts negotiated MTU 256 before the first indication
+  and restored the snapshot subscription without a protocol error. A following
+  three-minute run held internal RAM and PSRAM at their warm baselines, with
+  zero reconnect-loop errors, protocol errors, reassembly timeouts or queue
+  overflows. BOOT/PWR input and centered pairing-window text also remained
+  responsive.
+- Fresh numeric comparison and physical one-phone bond replacement passed on
+  2026-07-27. Long-pressing BOOT for two seconds while connected terminates the
+  old secure link, clears the stored NimBLE bond and its CCCDs, and opens the
+  bounded pairing window. The unbound iPhone displayed the same comparison code
+  as the centered device prompt; short BOOT confirmation completed the secure
+  bond, all subscriptions and ATT MTU 256 negotiation. A subsequent cold start
+  reconnected that bond automatically and restored a full snapshot. Bond-store
+  failures now close the pairing window instead of advertising a state that
+  cannot accept a replacement phone.
+- The deterministic phone-to-device BLE gate passed on 2026-07-27. A Debug-only
+  Companion runner sent a valid `action_result`, the exact same `message_id`
+  again, a deliberately incomplete two-fragment transfer separated by 5.1
+  seconds, a `cancel`, and an intentional disconnect/reconnect. The board
+  returned a full snapshot for the valid result and cancel, rejected the
+  duplicate as `duplicate`, expired the partial transfer as `expired`, cleared
+  volatile phone state on disconnect, and restored the encrypted subscriptions
+  and full snapshot at ATT MTU 256. Three physical iterations completed with
+  the same result; the final app also retained an explicit green pass result in
+  Settings. The expected diagnostic protocol-error/reassembly counters advanced
+  once per injected case, while queue overflow stayed at zero. After eight
+  minutes the expression monitor reported 108 bytes internal-RAM drift and zero
+  PSRAM drift from the warm baseline, with no reset or HCI assertion. The same
+  source passed 24 Swift unit tests, 7 UI tests, the embedded host/static tests,
+  the full ESP-IDF build, and the signed Release arm64 iOS build.
+- The first private-audio coexistence gate passed on 2026-07-27 using an iPhone
+  15 Pro Max on iOS 26.5.2 and AirPods 4 (ANC), route name
+  `ACoin's AirPods`. TTS played only through the AirPods, background music
+  ducked and recovered, and Fuji BLE remained connected. Closing the charging
+  case during a long private announcement removed the private route without
+  moving speech to the iPhone or ESP32 speaker. This iOS/AirPods combination did
+  not deliver a route-disconnect interruption before AVSpeechSynthesizer
+  completed, so the run does not claim a measured immediate-stop latency; the
+  app now records this callback limitation separately from the required
+  no-public-output result. During more than 55 minutes of concurrent display,
+  Wi-Fi, BLE and audio activity, the expression monitor reported 420 bytes of
+  internal-RAM drift and 120 bytes of PSRAM drift from its warm baseline, with
+  no display fault, audio underrun, BLE queue overflow, reset or watchdog event.
 
 Build status:
 
@@ -83,11 +153,13 @@ Build status:
 - Final no-change builds for probe/display/microphone/speaker/full measured
   4.47/4.28/4.20/4.01/4.14 seconds. All five merged binaries and release ZIPs
   were regenerated from the final source.
-- Host static coverage is 38 tests. It checks pins, variants, partitions,
+- Host static coverage is 39 tests. It checks pins, variants, partitions,
   single board registration, diagnostic isolation, Philips audio framing and
   the no-upstream-modification constraint, including IMU, RTC, power-key and
-  expression integration. A standalone host test covers expression priority
-  and hint mapping.
+  expression/BLE integration. Standalone host tests cover expression priority
+  and hint mapping plus the BLE framing session against shared protocol golden
+  fixtures. All four diagnostic `sdkconfig` files explicitly keep Bluetooth
+  disabled; their canonical builds, merged binaries and release packages pass.
 
 The board migration is complete for USB-powered development. Remaining work is
 deliberately outside the completed migration gates:
@@ -880,14 +952,18 @@ Exit: all P0 state transitions can be demonstrated offline from touch, button, a
 
 ### Phase 3 - BLE phone control
 
-- [ ] Implement GATT service and characteristics.
-- [ ] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
-- [ ] Implement pairing/reconnect and complete state snapshot.
+- [x] Implement GATT service and characteristics on the embedded peripheral.
+- [x] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
+- [x] Complete the real-iPhone gate. Encrypted bonded reconnect,
+      subscription restoration, device-to-phone capability/snapshot framing,
+      and deterministic phone-to-device success/duplicate/timeout/cancel
+      exchanges pass. Fresh numeric comparison, physical bond replacement and
+      automatic bonded reconnect also pass on the reference iPhone.
 - [ ] Implement output_route_set and output_route_verified without assuming earphone presence.
 - [ ] Define a post-v1 bounded configuration channel for the device-supported
       wake/interruption model catalog and transactional selection; do not add it
       to the frozen food-action list.
-- [ ] Log BLE RSSI, reconnect count, queue overflow, and protocol errors.
+- [x] Log BLE RSSI, reconnect count, queue overflow, reassembly timeout, and protocol errors.
 
 Exit: a simple phone test client can connect, read state, send a command, receive an event, and verify route loss without local speaker leakage.
 
@@ -904,9 +980,10 @@ Exit: Fuji completes a short local voice exchange and recovers from network loss
 
 - [ ] Add phone-side food-search request/response.
 - [ ] Add map handoff confirmation.
-- [ ] Add phone output-route verification.
-- [ ] Add earphone response routing through phone audio APIs.
-- [ ] Add music pause, duck, restore, and supported play/pause/next results.
+- [x] Add phone output-route verification.
+- [x] Add earphone response routing through phone audio APIs.
+- [x] Add music duck and restore for private TTS. Music transport commands remain
+      outside the current food vertical slice.
 - [ ] Inject earphone disconnects and confirm FACE_HAPTIC fallback.
 
 Exit: Fuji BLE and phone-earphone audio work simultaneously on the documented iPhone + AirPods reference pair.

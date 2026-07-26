@@ -13,6 +13,10 @@
 #include "waveshare_rtc.h"
 #include "waveshare_speaker_test.h"
 
+#if CONFIG_FUJI_BLE_TRANSPORT
+#include "fuji_ble_transport.h"
+#endif
+
 #include <esp_log.h>
 #include <esp_sleep.h>
 #include <freertos/FreeRTOS.h>
@@ -33,18 +37,32 @@ private:
     std::unique_ptr<Button> power_button_;
 
     void InitializeButtons() {
-        boot_button_ = std::make_unique<Button>(BOOT_BUTTON_GPIO, false, 1500);
+        boot_button_ = std::make_unique<Button>(BOOT_BUTTON_GPIO, false, 2000);
         boot_button_->OnClick([this]() {
+            ESP_LOGI(TAG, "BOOT short press");
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 EnterWifiConfigMode();
                 return;
             }
+#if CONFIG_FUJI_BLE_TRANSPORT
+            auto& ble = fuji::ble::FujiBleTransport::GetInstance();
+            if (ble.ConfirmPendingComparison() || ble.IsPairingMode()) {
+                return;
+            }
+#endif
             app.ToggleChatState();
         });
+#if CONFIG_FUJI_BLE_TRANSPORT
+        boot_button_->OnLongPress([]() {
+            ESP_LOGI(TAG, "BOOT held for 2 seconds; entering BLE pairing mode");
+            fuji::ble::FujiBleTransport::GetInstance().EnterPairingMode();
+        });
+#endif
 
         power_button_ = std::make_unique<Button>(POWER_BUTTON_GPIO, false, 3000);
         power_button_->OnClick([this]() {
+            ESP_LOGI(TAG, "PWR short press");
             auto* backlight = GetBacklight();
             if (backlight->brightness() == 0) {
                 backlight->RestoreBrightness();
