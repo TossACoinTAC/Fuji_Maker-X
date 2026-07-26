@@ -614,10 +614,15 @@ extension CoreBluetoothDeviceTransport: CBPeripheralDelegate {
             logger.error("Fuji characteristic properties invalid")
             return
         }
-        eventSubscriptionReady = false
-        stateSubscriptionReady = false
-        peripheral.setNotifyValue(true, for: eventCharacteristic)
-        peripheral.setNotifyValue(true, for: stateCharacteristic)
+        eventSubscriptionReady = eventCharacteristic.isNotifying
+        stateSubscriptionReady = stateCharacteristic.isNotifying
+        if !eventSubscriptionReady {
+            peripheral.setNotifyValue(true, for: eventCharacteristic)
+        }
+        if !stateSubscriptionReady {
+            peripheral.setNotifyValue(true, for: stateCharacteristic)
+        }
+        markReadyIfPossible()
     }
 
     func peripheral(
