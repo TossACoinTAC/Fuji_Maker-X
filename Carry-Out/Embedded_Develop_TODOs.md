@@ -86,9 +86,24 @@ Completed gates:
   roles/features raised the observed minimum to 47,683 bytes. The repeated
   voice/barge-in run then had no UDP allocation failure, audio queue drop,
   protocol error, reassembly timeout or BLE queue overflow, and the user
-  confirmed normal visual and audible behavior. Numeric comparison, encrypted
-  GATT exchange, reconnect and snapshot restoration remain joint iPhone gates,
-  not completed hardware claims.
+  confirmed normal visual and audible behavior. That device-only run did not
+  claim the joint iPhone gates; subsequent real-iPhone validation is recorded
+  below.
+- The bonded-iPhone reconnect slice passed on 2026-07-27. The Companion restored
+  its encrypted event/state subscriptions after controlled ESP32 resets and
+  showed `Fuji connected`; its timestamps matched each intentional disconnect
+  and recovery. Firmware now completes the first Wi-Fi scan before enabling
+  BLE, waits for ATT MTU negotiation (with a bounded MTU-23 fallback) before
+  opening the outgoing gate, sends the capability report before the snapshot,
+  and paces snapshot notifications. This removed both the synchronous NimBLE
+  callback deadlock and an HCI event-buffer assertion found during device
+  testing. Two final cold starts negotiated MTU 256 before the first indication
+  and restored the snapshot subscription without a protocol error. A following
+  three-minute run held internal RAM and PSRAM at their warm baselines, with
+  zero reconnect-loop errors, protocol errors, reassembly timeouts or queue
+  overflows. BOOT/PWR input and centered pairing-window text also remained
+  responsive. Numeric comparison with a newly unbound phone and a real
+  phone-to-device command/result exchange remain open hardware gates.
 
 Build status:
 
@@ -903,9 +918,10 @@ Exit: all P0 state transitions can be demonstrated offline from touch, button, a
 
 - [x] Implement GATT service and characteristics on the embedded peripheral.
 - [x] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
-- [ ] Jointly validate pairing/reconnect and complete state snapshot with the
-      real iPhone central; the embedded implementation and device smoke test
-      are complete.
+- [ ] Complete the remaining real-iPhone gate. Encrypted bonded reconnect,
+      subscription restoration and device-to-phone capability/snapshot framing
+      now pass; fresh numeric comparison plus a phone-to-device command/result
+      exchange remain to be validated.
 - [ ] Implement output_route_set and output_route_verified without assuming earphone presence.
 - [ ] Define a post-v1 bounded configuration channel for the device-supported
       wake/interruption model catalog and transactional selection; do not add it
