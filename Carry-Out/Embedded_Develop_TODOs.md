@@ -48,6 +48,17 @@ Completed gates:
   releases GPIO7 power hold and enters deep sleep with GPIO6 wake. A subsequent
   short press cold-started the display, IMU, Wi-Fi and wake-word engine. The
   USB-powered shutdown and recovery gate passed.
+- The board-private `FujiExpressionController` maps live XiaoZhi state and
+  safety priority to 320x320 PNG/GIF assets with an allocation-stable LVGL
+  fallback. Core assets are prewarmed before audio startup, and emotion hints
+  are consumed asynchronously so display refresh cannot block recording.
+- The expression hardware gate passed on 2026-07-26. The placeholder face was
+  upright, centered and complete with no corruption or flicker; PWR-off and
+  wake restored the current state without an old frame. A 30-minute Wi-Fi,
+  ASR, TTS and expression stress run ended with 672 bytes internal-RAM drift
+  and 1,008 bytes PSRAM drift from the five-minute warm baseline, below the
+  8 KiB limit. There was no reset, watchdog, display fault or speaker
+  underrun, and the user confirmed normal visual and audio output.
 
 Build status:
 
@@ -61,20 +72,31 @@ Build status:
 - Final no-change builds for probe/display/microphone/speaker/full measured
   4.47/4.28/4.20/4.01/4.14 seconds. All five merged binaries and release ZIPs
   were regenerated from the final source.
-- Host static coverage is 35 tests. It checks pins, variants, partitions,
+- Host static coverage is 37 tests. It checks pins, variants, partitions,
   single board registration, diagnostic isolation, Philips audio framing and
-  the no-upstream-modification constraint, including IMU, RTC and power-key
-  integration.
+  the no-upstream-modification constraint, including IMU, RTC, power-key and
+  expression integration. A standalone host test covers expression priority
+  and hint mapping.
 
 The board migration is complete for USB-powered development. Remaining work is
 deliberately outside the completed migration gates:
 
-1. Add a Fuji-owned expression renderer above the SPD2010/LVGL display driver,
-   mapping idle, listening, thinking, speaking and emotion states to custom
-   static or animated assets. This must not modify the panel/touch driver.
-2. Validate retained RTC time only after its backup-power context is understood
+1. Replace the accepted placeholder expression pack with final art following
+   `Images/Fuji_Expression_Asset_Requirements.md`; keep the controller and
+   upstream panel/touch driver boundary unchanged.
+2. On a separate `dev/embedded-barge-in` branch, add the confirmed speaking
+   interrupt path: the wake phrase is primary and a short screen tap is the
+   fallback. Stop TTS immediately, enter real listening without waiting for a
+   visual transition, and verify five consecutive interrupts, silence within
+   100 ms and recording within 250 ms. The local `interrupting` animation is
+   not a protocol snapshot state.
+3. Validate the selected XiaoZhi cloud TTS provider/voice for Japanese and
+   Korean. The 2026-07-26 run displayed those subtitles without audio while
+   French and German played normally; do not change the device codec until a
+   provider/voice A/B test proves an embedded fault.
+4. Validate retained RTC time only after its backup-power context is understood
    and safe; the current read-only driver must not silently set the clock.
-3. Keep the battery disconnected until voltage, polarity, protection and the
+5. Keep the battery disconnected until voltage, polarity, protection and the
    connector have been checked separately. TF card and external breadboard
    modules remain outside this migration.
 
