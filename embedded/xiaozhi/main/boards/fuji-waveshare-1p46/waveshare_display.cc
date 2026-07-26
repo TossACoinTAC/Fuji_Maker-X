@@ -3,6 +3,7 @@
 #include "backlight.h"
 #include "config.h"
 #include "display/lcd_display.h"
+#include "fuji_expression_controller.h"
 #include "spd2010_touch.h"
 #include "waveshare_peripherals.h"
 
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
 
 #define TAG "FujiWsDisplay"
 
@@ -32,12 +34,39 @@ public:
     void SetupUI() override {
         SpiLcdDisplay::SetupUI();
         DisplayLockGuard lock(this);
+        if (emoji_label_ != nullptr) {
+            lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (emoji_image_ != nullptr) {
+            lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_set_size(emoji_box_, 320, 320);
+        expression_ = std::make_unique<FujiExpressionController>(emoji_box_);
+        expression_->SetScreenEnabled(!power_save_);
         lv_display_add_event_cb(display_, AlignInvalidatedArea, LV_EVENT_INVALIDATE_AREA, nullptr);
         lv_indev_t* input = lv_indev_create();
         lv_indev_set_type(input, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(input, ReadTouchInput);
         lv_indev_set_user_data(input, touch_);
         lv_indev_set_display(input, display_);
+    }
+
+    void SetEmotion(const char* emotion) override {
+        if (expression_ == nullptr) {
+            SpiLcdDisplay::SetEmotion(emotion);
+            return;
+        }
+        DisplayLockGuard lock(this);
+        expression_->SetServerEmotionHint(emotion);
+    }
+
+    void SetPowerSaveMode(bool on) override {
+        power_save_ = on;
+        if (expression_ == nullptr) {
+            return;
+        }
+        DisplayLockGuard lock(this);
+        expression_->SetScreenEnabled(!on);
     }
 
 private:
@@ -64,6 +93,8 @@ private:
     }
 
     Spd2010Touch* touch_;
+    std::unique_ptr<FujiExpressionController> expression_;
+    bool power_save_ = false;
 };
 
 constexpr uint16_t WireRgb565(uint16_t color) {

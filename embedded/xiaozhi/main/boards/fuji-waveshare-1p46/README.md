@@ -132,9 +132,26 @@ display, IMU, Wi-Fi and wake-word recovery were verified on hardware.
 
 ## Custom expressions
 
-The SPD2010 panel and touch implementation is independent from the on-screen
-XiaoZhi expression set. A future Fuji expression layer can map application
-states such as idle, listening, thinking, speaking and emotions to custom LVGL
-drawings, bitmap frames or sprite animations while retaining the existing
-panel, touch and backlight drivers. Large assets should use the existing assets
-partition and PSRAM rather than being compiled into the board driver.
+The project-owned `FujiExpressionController` maps the live XiaoZhi state to
+`idle`, `listening`, `thinking`, `connecting`, `speaking`, `success`, `error`,
+`offline` and `muted`. Its fixed priority is screen-off/deep-sleep, fatal error
+or offline, mute, device state, then a server emotion hint. A server hint cannot
+override an active or safety state.
+
+Place transparent 320x320 images in `assets/` using the `fuji_<state>.png`
+names. Listening, thinking, connecting and speaking may instead use GIF files
+with the same stem; every GIF frame delay must limit playback to 12 fps or less.
+Files are packed into the existing assets partition, while decoded image cache
+uses PSRAM when available. Missing, malformed, incorrectly sized or too-fast
+assets fall back to allocation-stable LVGL geometry.
+
+State changes stop and rewind the old animation before selecting the next one.
+The PWR short-press and controlled shutdown paths pause the expression timer
+before the backlight is disabled. Wake resumes from the current application,
+network and mute state rather than continuing the prior animation frame.
+
+The host policy test verifies the priority ordering. Physical acceptance still
+requires the round-screen crop/orientation check, 30-minute warm run, heap and
+PSRAM drift within 8 KiB after warm-up, no corruption or audio underrun, and no
+more than 50 ms added wake-to-record latency relative to the expression-free
+baseline.
