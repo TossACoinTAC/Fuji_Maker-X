@@ -70,6 +70,25 @@ Completed gates:
   audible underrun, correct expression behavior, and normal completion. There
   was no reset or watchdog event; the BOOT button remains reserved for later
   BLE pairing behavior.
+- The embedded side of the Fuji protocol-v1 BLE transport reached its device
+  smoke gate on 2026-07-26. The normal firmware exposes the fixed encrypted
+  command/event/snapshot GATT service through NimBLE with LE Secure
+  Connections numeric comparison, a 120-second pairing window, one-phone bond
+  pruning, bounded framing/queues, monotonic TTL handling, disconnect cleanup,
+  snapshot recovery and transport metrics. Long-pressing BOOT reopened the
+  pairing window without triggering chat, while short press remained reserved
+  for numeric-comparison confirmation during pairing.
+- BLE, the iPhone Wi-Fi hotspot, MQTT, wake recognition, cloud speech, the
+  expression layer, screen-tap barge-in and backlight control ran together on
+  the physical board. The first build exposed internal-memory pressure
+  (`EspUdp errno=12`, one audio queue drop, 355-byte minimum free SRAM); moving
+  the low-throughput NimBLE host allocations to PSRAM and disabling unused
+  roles/features raised the observed minimum to 47,683 bytes. The repeated
+  voice/barge-in run then had no UDP allocation failure, audio queue drop,
+  protocol error, reassembly timeout or BLE queue overflow, and the user
+  confirmed normal visual and audible behavior. Numeric comparison, encrypted
+  GATT exchange, reconnect and snapshot restoration remain joint iPhone gates,
+  not completed hardware claims.
 
 Build status:
 
@@ -83,11 +102,13 @@ Build status:
 - Final no-change builds for probe/display/microphone/speaker/full measured
   4.47/4.28/4.20/4.01/4.14 seconds. All five merged binaries and release ZIPs
   were regenerated from the final source.
-- Host static coverage is 38 tests. It checks pins, variants, partitions,
+- Host static coverage is 39 tests. It checks pins, variants, partitions,
   single board registration, diagnostic isolation, Philips audio framing and
   the no-upstream-modification constraint, including IMU, RTC, power-key and
-  expression integration. A standalone host test covers expression priority
-  and hint mapping.
+  expression/BLE integration. Standalone host tests cover expression priority
+  and hint mapping plus the BLE framing session against shared protocol golden
+  fixtures. All four diagnostic `sdkconfig` files explicitly keep Bluetooth
+  disabled; their canonical builds, merged binaries and release packages pass.
 
 The board migration is complete for USB-powered development. Remaining work is
 deliberately outside the completed migration gates:
@@ -880,14 +901,16 @@ Exit: all P0 state transitions can be demonstrated offline from touch, button, a
 
 ### Phase 3 - BLE phone control
 
-- [ ] Implement GATT service and characteristics.
-- [ ] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
-- [ ] Implement pairing/reconnect and complete state snapshot.
+- [x] Implement GATT service and characteristics on the embedded peripheral.
+- [x] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
+- [ ] Jointly validate pairing/reconnect and complete state snapshot with the
+      real iPhone central; the embedded implementation and device smoke test
+      are complete.
 - [ ] Implement output_route_set and output_route_verified without assuming earphone presence.
 - [ ] Define a post-v1 bounded configuration channel for the device-supported
       wake/interruption model catalog and transactional selection; do not add it
       to the frozen food-action list.
-- [ ] Log BLE RSSI, reconnect count, queue overflow, and protocol errors.
+- [x] Log BLE RSSI, reconnect count, queue overflow, reassembly timeout, and protocol errors.
 
 Exit: a simple phone test client can connect, read state, send a command, receive an event, and verify route loss without local speaker leakage.
 
