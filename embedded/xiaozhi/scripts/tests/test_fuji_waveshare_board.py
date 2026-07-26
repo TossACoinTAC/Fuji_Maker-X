@@ -337,6 +337,7 @@ class FujiWaveshareBoardTests(unittest.TestCase):
             "CONFIG_BT_ENABLED=y",
             "CONFIG_BT_NIMBLE_ENABLED=y",
             "CONFIG_BT_CONTROLLER_ENABLED=y",
+            "CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y",
             "CONFIG_BT_NIMBLE_ROLE_CENTRAL=n",
             "CONFIG_BT_NIMBLE_ROLE_OBSERVER=n",
             "CONFIG_BT_NIMBLE_SM_LEGACY=n",
@@ -346,6 +347,12 @@ class FujiWaveshareBoardTests(unittest.TestCase):
             "CONFIG_BT_NIMBLE_NVS_PERSIST=y",
             "CONFIG_BT_NIMBLE_MAX_BONDS=2",
             "CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1",
+            "CONFIG_BT_NIMBLE_MAX_CCCDS=2",
+            "CONFIG_BT_NIMBLE_50_FEATURE_SUPPORT=n",
+            "CONFIG_BT_NIMBLE_DTM_MODE_TEST=n",
+            "CONFIG_BT_CTRL_BLE_MAX_ACT=2",
+            "CONFIG_BT_CTRL_DTM_ENABLE=n",
+            "CONFIG_BT_CTRL_BLE_SCAN=n",
         }
         self.assertTrue(expected.issubset(set(normal["sdkconfig_append"])))
         for build in board_config["builds"]:
