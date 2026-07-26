@@ -90,7 +90,6 @@ final class FujiAppModel {
         transport.connect()
         connectionState = transport.connectionState
         deviceState = connectionState == .connected ? .idle : .disconnected
-        record("演示设备已连接", detail: "业务层通过 DeviceTransport 接收请求", kind: .device)
 
         messageTask = Task { [weak self, events = transport.events] in
             for await event in events {
@@ -256,6 +255,7 @@ final class FujiAppModel {
     private func handle(_ event: DeviceTransportEvent) {
         switch event {
         case .connectionChanged(let state):
+            let previousState = connectionState
             connectionState = state
             if state == .disconnected {
                 deviceState = .disconnected
@@ -263,6 +263,15 @@ final class FujiAppModel {
                 activeRequestID = nil
             } else if state == .connected, deviceState == .disconnected {
                 deviceState = .idle
+            }
+            guard state != previousState else { return }
+            switch state {
+            case .connecting:
+                record("正在连接 Fuji", detail: "正在扫描或恢复已绑定设备", kind: .device)
+            case .connected:
+                record("Fuji 已连接", detail: "加密蓝牙链路和状态订阅已就绪", kind: .device)
+            case .disconnected:
+                record("Fuji 已断开", detail: "等待蓝牙重连并清除未完成事务", kind: .error)
             }
         case .stateSnapshot(let snapshot):
             activeRequestID = snapshot.activeRequestID

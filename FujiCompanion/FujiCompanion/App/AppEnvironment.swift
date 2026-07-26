@@ -16,14 +16,13 @@ struct AppEnvironment {
         let isNavigationFailureTest = ProcessInfo.processInfo.environment["UITEST_NAVIGATION_FAILURE"] == "1"
         let settings = AppSettings()
         let audioRouteMonitor = AudioRouteMonitor()
-        let transport = MockDeviceTransport(connectsSuccessfully: !isOfflineTest)
 
         if isUITesting {
             settings.amapPrivacyAccepted = true
             return AppEnvironment(
                 settings: settings,
                 audioRouteMonitor: audioRouteMonitor,
-                transport: transport,
+                transport: MockDeviceTransport(connectsSuccessfully: !isOfflineTest),
                 locationProvider: FixtureLocationService(),
                 restaurantSearch: FixtureRestaurantSearchService(),
                 navigationLauncher: FixtureNavigationService(
@@ -36,7 +35,7 @@ struct AppEnvironment {
         return AppEnvironment(
             settings: settings,
             audioRouteMonitor: audioRouteMonitor,
-            transport: transport,
+            transport: CoreBluetoothDeviceTransport(),
             locationProvider: LocationService(),
             restaurantSearch: AMapRestaurantSearchService {
                 settings.amapPrivacyAccepted

@@ -86,7 +86,7 @@ final class FujiCompanionUITests: XCTestCase {
         let status = app.staticTexts["fuji.status"]
         XCTAssertTrue(status.waitForExistence(timeout: 3))
         let connected = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label CONTAINS '演示设备已连接'"),
+            predicate: NSPredicate(format: "label CONTAINS 'Fuji 已连接'"),
             object: status
         )
         XCTAssertEqual(XCTWaiter.wait(for: [connected], timeout: 3), .completed)

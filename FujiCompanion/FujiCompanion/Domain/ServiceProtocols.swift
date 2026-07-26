@@ -9,7 +9,7 @@ enum DeviceConnectionState: String, Equatable {
         switch self {
         case .disconnected: "未连接"
         case .connecting: "连接中"
-        case .connected: "演示设备已连接"
+        case .connected: "Fuji 已连接"
         }
     }
 }
