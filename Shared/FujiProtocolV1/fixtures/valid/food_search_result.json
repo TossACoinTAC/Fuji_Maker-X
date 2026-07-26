@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "message_id": "10000000-0000-4000-8000-000000000003",
+  "request_id": "20000000-0000-4000-8000-000000000001",
+  "direction": "phone_to_device",
+  "type": "action_result",
+  "ttl_ms": 60000,
+  "payload": {
+    "action": "food_search",
+    "status": "needs_confirmation",
+    "candidates": [
+      { "candidate_id": "poi:001", "name": "近处面馆", "reason": "距离近且符合预算" },
+      { "candidate_id": "poi:002", "name": "清蔬料理", "reason": "口味清淡" }
+    ]
+  }
+}

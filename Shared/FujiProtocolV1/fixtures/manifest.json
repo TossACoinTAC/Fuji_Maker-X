@@ -1,0 +1,22 @@
+{
+  "valid": [
+    "valid/capability_report.json",
+    "valid/food_search_request.json",
+    "valid/food_search_result.json",
+    "valid/navigation_request.json",
+    "valid/navigation_ready.json",
+    "valid/state_snapshot_unknown_field.json",
+    "valid/cancel.json"
+  ],
+  "invalid": [
+    { "path": "invalid/unsupported_version.json", "error": "unsupported_version" },
+    { "path": "invalid/unknown_type.json", "error": "unknown_type" },
+    { "path": "invalid/wrong_direction.json", "error": "invalid_payload" },
+    { "path": "invalid/missing_request_id.json", "error": "invalid_payload" },
+    { "path": "invalid/bad_ttl.json", "error": "invalid_payload" },
+    { "path": "invalid/too_many_candidates.json", "error": "invalid_payload" },
+    { "path": "invalid/unconfirmed_navigation.json", "error": "invalid_payload" },
+    { "path": "invalid/unknown_action.json", "error": "invalid_payload" },
+    { "path": "invalid/wrong_type.json", "error": "invalid_payload" }
+  ]
+}

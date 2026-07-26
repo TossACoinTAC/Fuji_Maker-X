@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "message_id": "30000000-0000-4000-8000-000000000004",
+  "direction": "device_to_phone",
+  "type": "action_request",
+  "ttl_ms": 30000,
+  "payload": { "action": "food_search", "criteria": {} }
+}

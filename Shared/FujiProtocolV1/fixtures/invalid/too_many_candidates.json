@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "message_id": "30000000-0000-4000-8000-000000000006",
+  "request_id": "20000000-0000-4000-8000-000000000001",
+  "direction": "phone_to_device",
+  "type": "action_result",
+  "ttl_ms": 30000,
+  "payload": {
+    "action": "food_search",
+    "status": "needs_confirmation",
+    "candidates": [
+      { "candidate_id": "1", "name": "一", "reason": "一" },
+      { "candidate_id": "2", "name": "二", "reason": "二" },
+      { "candidate_id": "3", "name": "三", "reason": "三" },
+      { "candidate_id": "4", "name": "四", "reason": "四" }
+    ]
+  }
+}

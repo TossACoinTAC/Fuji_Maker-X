@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "message_id": "30000000-0000-4000-8000-000000000005",
+  "direction": "device_to_phone",
+  "type": "state_snapshot",
+  "ttl_ms": 120001,
+  "payload": { "device_state": "idle", "earphones_verified": false, "firmware_version": "1", "capabilities": [] }
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "message_id": "10000000-0000-4000-8000-000000000001",
+  "direction": "device_to_phone",
+  "type": "capability_report",
+  "ttl_ms": 30000,
+  "sent_at_utc": "2026-07-26T08:00:00Z",
+  "payload": {
+    "protocol_versions": [1],
+    "firmware_version": "1.0.0-dev",
+    "build_id": "fuji-waveshare-1p46-local",
+    "max_payload_bytes": 8192,
+    "capabilities": ["food_search", "start_navigation", "state_snapshot"]
+  }
+}
