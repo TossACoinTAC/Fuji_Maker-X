@@ -36,6 +36,7 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
     private static let maximumQueuedWrites = 8
     private static let writeTimeout: Duration = .seconds(5)
     private static let scanTimeout: Duration = .seconds(10)
+    private static let connectionSetupTimeout: Duration = .seconds(10)
     private static let maximumReconnectDelaySeconds: UInt64 = 60
 
     private struct Metrics {
@@ -73,6 +74,7 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
     private var reconnectDelaySeconds: UInt64 = 1
     private var reconnectTask: Task<Void, Never>?
     private var scanTimeoutTask: Task<Void, Never>?
+    private var connectionSetupTimeoutTask: Task<Void, Never>?
     private var inboundTimeoutTask: Task<Void, Never>?
     private var inboundDeadlineMS: UInt64?
     private var nextTransferID: UInt32 = 1
@@ -102,6 +104,7 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
     deinit {
         reconnectTask?.cancel()
         scanTimeoutTask?.cancel()
+        connectionSetupTimeoutTask?.cancel()
         inboundTimeoutTask?.cancel()
         writeTimeoutTask?.cancel()
         eventContinuation.finish()
@@ -125,6 +128,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         reconnectTask = nil
         scanTimeoutTask?.cancel()
         scanTimeoutTask = nil
+        connectionSetupTimeoutTask?.cancel()
+        connectionSetupTimeoutTask = nil
         if centralManager.state == .poweredOn {
             centralManager.stopScan()
         }
@@ -222,6 +227,7 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         isScanning = false
         self.peripheral = peripheral
         peripheral.delegate = self
+        armConnectionSetupTimeout(for: peripheral)
         if peripheral.state == .connected {
             discoverService(on: peripheral)
         } else if centralManager.state == .poweredOn, peripheral.state != .connecting {
@@ -232,7 +238,28 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
     private func discoverService(on peripheral: CBPeripheral) {
         resetCharacteristics()
         peripheral.delegate = self
+        armConnectionSetupTimeout(for: peripheral)
         peripheral.discoverServices([Self.serviceUUID])
+    }
+
+    private func armConnectionSetupTimeout(for peripheral: CBPeripheral) {
+        connectionSetupTimeoutTask?.cancel()
+        let identifier = peripheral.identifier
+        connectionSetupTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.connectionSetupTimeout)
+            guard !Task.isCancelled,
+                  let self,
+                  self.connectionState == .connecting,
+                  self.peripheral?.identifier == identifier else { return }
+            self.logger.error("Fuji connection setup timed out")
+            let stalePeripheral = self.peripheral
+            self.clearConnectionState()
+            self.updateConnectionState(.disconnected)
+            if let stalePeripheral, stalePeripheral.state != .disconnected {
+                self.centralManager.cancelPeripheralConnection(stalePeripheral)
+            }
+            self.scheduleReconnect()
+        }
     }
 
     private func markReadyIfPossible() {
@@ -241,6 +268,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
               let peripheral,
               peripheral.state == .connected else { return }
         defaults.set(peripheral.identifier.uuidString, forKey: Self.peripheralDefaultsKey)
+        connectionSetupTimeoutTask?.cancel()
+        connectionSetupTimeoutTask = nil
         reconnectDelaySeconds = 1
         updateConnectionState(.connected)
         logger.info("Fuji encrypted GATT transport ready")
@@ -262,6 +291,8 @@ final class CoreBluetoothDeviceTransport: NSObject, DeviceTransport {
         session.resetConnection()
         scanTimeoutTask?.cancel()
         scanTimeoutTask = nil
+        connectionSetupTimeoutTask?.cancel()
+        connectionSetupTimeoutTask = nil
         inboundTimeoutTask?.cancel()
         inboundTimeoutTask = nil
         inboundDeadlineMS = nil
@@ -480,7 +511,7 @@ extension CoreBluetoothDeviceTransport: CBCentralManagerDelegate {
     ) {
         guard wantsConnection,
               boundPeripheralID == nil || peripheral.identifier == boundPeripheralID,
-              self.peripheral == nil || self.peripheral?.identifier == peripheral.identifier else {
+              self.peripheral == nil else {
             return
         }
         metrics.lastRSSI = RSSI.intValue
@@ -521,6 +552,16 @@ extension CoreBluetoothDeviceTransport: CBCentralManagerDelegate {
 }
 
 extension CoreBluetoothDeviceTransport: CBPeripheralDelegate {
+    func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
+        guard self.peripheral?.identifier == peripheral.identifier,
+              invalidatedServices.contains(where: { $0.uuid == Self.serviceUUID }) else { return }
+        failAllWrites(with: CoreBluetoothTransportError.operationFailed("GATT service changed"))
+        session.resetConnection()
+        updateConnectionState(.connecting)
+        logger.info("Fuji GATT service changed; rediscovering")
+        discoverService(on: peripheral)
+    }
+
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard self.peripheral?.identifier == peripheral.identifier else { return }
         if let error {

@@ -166,6 +166,51 @@ private struct FixtureManifest: Decodable {
     let invalid: [InvalidFixture]
 }
 
+@Suite("设备连接记录")
+@MainActor
+struct DeviceConnectionHistoryTests {
+    @Test("重连尝试不重复写入活动记录")
+    func reconnectAttemptsDoNotSpamHistory() async {
+        let transport = MockDeviceTransport()
+        let suiteName = "FujiCompanionTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let model = FujiAppModel(
+            environment: AppEnvironment(
+                settings: AppSettings(defaults: defaults),
+                audioRouteMonitor: AudioRouteMonitor(),
+                transport: transport,
+                locationProvider: FixtureLocationService(),
+                restaurantSearch: FixtureRestaurantSearchService(),
+                navigationLauncher: FixtureNavigationService(),
+                speechOutput: FixtureSpeechOutput()
+            )
+        )
+
+        model.start()
+        await waitForHistory(count: 1, in: model)
+        #expect(model.activity.map(\.title) == ["Fuji 已连接"])
+
+        transport.simulateConnectionState(.connecting)
+        transport.simulateConnectionState(.disconnected)
+        transport.simulateConnectionState(.connecting)
+        transport.simulateConnectionState(.disconnected)
+        await waitForHistory(count: 2, in: model)
+        #expect(model.activity.map(\.title) == ["Fuji 已断开", "Fuji 已连接"])
+
+        transport.simulateConnectionState(.connecting)
+        transport.simulateConnectionState(.connected)
+        await waitForHistory(count: 3, in: model)
+        #expect(model.activity.map(\.title) == ["Fuji 已连接", "Fuji 已断开", "Fuji 已连接"])
+    }
+
+    private func waitForHistory(count: Int, in model: FujiAppModel) async {
+        for _ in 0..<20 where model.activity.count < count {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+}
+
 @Suite("Fuji BLE 会话")
 @MainActor
 struct FujiBLESessionTests {

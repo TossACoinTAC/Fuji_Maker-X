@@ -69,6 +69,7 @@ final class FujiAppModel {
     private let validator = FujiMessageValidator()
     private var messageTask: Task<Void, Never>?
     private var started = false
+    private var hasEstablishedConnection = false
 
     init(environment: AppEnvironment) {
         settings = environment.settings
@@ -267,11 +268,15 @@ final class FujiAppModel {
             guard state != previousState else { return }
             switch state {
             case .connecting:
-                record("正在连接 Fuji", detail: "正在扫描或恢复已绑定设备", kind: .device)
+                break
             case .connected:
+                hasEstablishedConnection = true
                 record("Fuji 已连接", detail: "加密蓝牙链路和状态订阅已就绪", kind: .device)
             case .disconnected:
-                record("Fuji 已断开", detail: "等待蓝牙重连并清除未完成事务", kind: .error)
+                if hasEstablishedConnection {
+                    hasEstablishedConnection = false
+                    record("Fuji 已断开", detail: "等待蓝牙重连并清除未完成事务", kind: .error)
+                }
             }
         case .stateSnapshot(let snapshot):
             activeRequestID = snapshot.activeRequestID

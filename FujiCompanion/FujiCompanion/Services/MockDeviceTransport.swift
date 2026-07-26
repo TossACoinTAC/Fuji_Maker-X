@@ -25,8 +25,7 @@ final class MockDeviceTransport: DeviceTransport {
     }
 
     func disconnect() {
-        connectionState = .disconnected
-        continuation.yield(.connectionChanged(.disconnected))
+        simulateConnectionState(.disconnected)
     }
 
     func send(_ message: FujiMessage) async throws {
@@ -44,6 +43,11 @@ final class MockDeviceTransport: DeviceTransport {
     func simulateSnapshot(_ snapshot: FujiStateSnapshotPayload) {
         guard connectionState == .connected else { return }
         continuation.yield(.stateSnapshot(snapshot))
+    }
+
+    func simulateConnectionState(_ state: DeviceConnectionState) {
+        connectionState = state
+        continuation.yield(.connectionChanged(state))
     }
 }
 
