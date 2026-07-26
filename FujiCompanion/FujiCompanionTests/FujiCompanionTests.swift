@@ -1,4 +1,5 @@
 import MapKit
+import AVFoundation
 import Testing
 @testable import FujiCompanion
 
@@ -164,6 +165,258 @@ private struct FixtureManifest: Decodable {
 
     let valid: [String]
     let invalid: [InvalidFixture]
+}
+
+@Suite("私密音频路由")
+struct SpeechRoutePolicyTests {
+    @Test("AirPods 音频端口被识别为私密路由")
+    func recognizesBluetoothAudioPorts() {
+        #expect(SpeechRoutePolicy.hasPrivateRoute(portTypes: [.bluetoothA2DP]))
+        #expect(SpeechRoutePolicy.hasPrivateRoute(portTypes: [.bluetoothHFP]))
+        #expect(SpeechRoutePolicy.hasPrivateRoute(portTypes: [.bluetoothLE]))
+    }
+
+    @Test("手机扬声器不被识别为私密路由")
+    func rejectsPhoneSpeaker() {
+        #expect(!SpeechRoutePolicy.hasPrivateRoute(portTypes: [.builtInSpeaker]))
+        #expect(!SpeechRoutePolicy.hasPrivateRoute(portTypes: []))
+    }
+
+    @Test("旧 AirPods 不可用时即使当前路由尚未刷新也停止")
+    func stopsOnUnavailablePreviousAirPodsRoute() {
+        #expect(
+            SpeechRoutePolicy.shouldStopAfterRouteChange(
+                policy: .privateOnly,
+                reason: .oldDeviceUnavailable,
+                previousPortTypes: [.bluetoothA2DP],
+                currentPortTypes: [.bluetoothA2DP]
+            )
+        )
+        #expect(
+            !SpeechRoutePolicy.shouldStopAfterRouteChange(
+                policy: .allowPhoneSpeaker,
+                reason: .oldDeviceUnavailable,
+                previousPortTypes: [.bluetoothA2DP],
+                currentPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    @Test("系统路由断开中断只在 began 时识别")
+    func recognizesRouteDisconnectInterruption() {
+        #expect(
+            SpeechRoutePolicy.isRouteDisconnectInterruption(
+                type: .began,
+                reason: .routeDisconnected
+            )
+        )
+        #expect(
+            !SpeechRoutePolicy.isRouteDisconnectInterruption(
+                type: .ended,
+                reason: .routeDisconnected
+            )
+        )
+        #expect(
+            !SpeechRoutePolicy.isRouteDisconnectInterruption(
+                type: .began,
+                reason: .default
+            )
+        )
+    }
+}
+
+@Suite("设备连接记录")
+@MainActor
+struct DeviceConnectionHistoryTests {
+    @Test("重连尝试不重复写入活动记录")
+    func reconnectAttemptsDoNotSpamHistory() async {
+        let transport = MockDeviceTransport()
+        let suiteName = "FujiCompanionTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let model = FujiAppModel(
+            environment: AppEnvironment(
+                settings: AppSettings(defaults: defaults),
+                audioRouteMonitor: AudioRouteMonitor(),
+                transport: transport,
+                locationProvider: FixtureLocationService(),
+                restaurantSearch: FixtureRestaurantSearchService(),
+                navigationLauncher: FixtureNavigationService(),
+                speechOutput: FixtureSpeechOutput()
+            )
+        )
+
+        model.start()
+        await waitForHistory(count: 1, in: model)
+        #expect(model.activity.map(\.title) == ["Fuji 已连接"])
+
+        transport.simulateConnectionState(.connecting)
+        transport.simulateConnectionState(.disconnected)
+        transport.simulateConnectionState(.connecting)
+        transport.simulateConnectionState(.disconnected)
+        await waitForHistory(count: 2, in: model)
+        #expect(model.activity.map(\.title) == ["Fuji 已断开", "Fuji 已连接"])
+
+        transport.simulateConnectionState(.connecting)
+        transport.simulateConnectionState(.connected)
+        await waitForHistory(count: 3, in: model)
+        #expect(model.activity.map(\.title) == ["Fuji 已连接", "Fuji 已断开", "Fuji 已连接"])
+    }
+
+    private func waitForHistory(count: Int, in model: FujiAppModel) async {
+        for _ in 0..<20 where model.activity.count < count {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+}
+
+#if DEBUG
+@Suite("确定性 BLE 链路测试")
+@MainActor
+struct BLETransportDiagnosticTests {
+    @Test("真实与 Mock transport 共用成功重复超时取消断线编排")
+    func runsDeterministicTransportSequence() async {
+        let transport = MockDeviceTransport()
+        let suiteName = "FujiCompanionTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let model = FujiAppModel(
+            environment: AppEnvironment(
+                settings: AppSettings(defaults: defaults),
+                audioRouteMonitor: AudioRouteMonitor(),
+                transport: transport,
+                locationProvider: FixtureLocationService(),
+                restaurantSearch: FixtureRestaurantSearchService(),
+                navigationLauncher: FixtureNavigationService(),
+                speechOutput: FixtureSpeechOutput()
+            )
+        )
+
+        model.start()
+        await model.runBLETransportTest()
+
+        #expect(model.statusMessage == "蓝牙链路测试通过")
+        #expect(model.presentedError == nil)
+        #expect(!model.isBLETransportTestRunning)
+        #expect(model.bleTransportTestResult?.succeeded == true)
+        #expect(model.bleTransportTestResult?.message.contains("断线恢复") == true)
+        #expect(transport.sentMessages.count == 4)
+        #expect(transport.sentMessages[0].messageID == transport.sentMessages[1].messageID)
+        #expect(transport.sentMessages[2].type == .actionResult)
+        #expect(transport.sentMessages[3].type == .cancel)
+        let titles = Set(model.activity.map(\.title))
+        for expected in [
+            "BLE 成功路径通过",
+            "BLE 重复路径通过",
+            "BLE 超时路径通过",
+            "BLE 取消路径通过",
+            "BLE 链路测试通过"
+        ] {
+            #expect(titles.contains(expected))
+        }
+    }
+}
+#endif
+
+@Suite("Fuji BLE 会话")
+@MainActor
+struct FujiBLESessionTests {
+    @Test("MTU 23 分片重组并在重连后保持去重")
+    func reassemblyAndReconnectDeduplication() throws {
+        let session = FujiBLESession()
+        let message = FujiMessage.foodSearch(
+            criteria: .init(radiusM: 1_500, budgetRMB: 80, avoidTerms: ["花生"])
+        )
+        let json = try JSONEncoder().encode(message)
+        let firstTransfer = try FujiFramer.frames(for: json, mtu: 23, transferID: 1)
+
+        var received: FujiMessage?
+        for frame in firstTransfer {
+            received = try session.accept(frame, nowMS: 1_000) ?? received
+        }
+        #expect(received == message)
+
+        session.resetConnection()
+        let repeatedTransfer = try FujiFramer.frames(for: json, mtu: 23, transferID: 2)
+        #expect(throws: FujiMessageValidationError.protocolError(.duplicate)) {
+            for frame in repeatedTransfer {
+                _ = try session.accept(frame, nowMS: 1_001)
+            }
+        }
+
+        session.resetForRestart()
+        var acceptedAfterRestart: FujiMessage?
+        for frame in repeatedTransfer {
+            acceptedAfterRestart = try session.accept(frame, nowMS: 1_002) ?? acceptedAfterRestart
+        }
+        #expect(acceptedAfterRestart == message)
+    }
+
+    @Test("消息 TTL 从首个分片接收时刻计算")
+    func ttlStartsAtFirstFragment() throws {
+        let session = FujiBLESession()
+        let message = FujiMessage(
+            direction: .deviceToPhone,
+            type: .protocolError,
+            ttlMS: 1,
+            payload: .protocolError(.init(errorCode: .internalError, message: "test"))
+        )
+        let json = try JSONEncoder().encode(message)
+        let frames = try FujiFramer.frames(for: json, mtu: 23, transferID: 3)
+
+        _ = try session.accept(frames[0], nowMS: 10_000)
+        #expect(throws: FujiMessageValidationError.protocolError(.expired)) {
+            for frame in frames.dropFirst() {
+                _ = try session.accept(frame, nowMS: 10_001)
+            }
+        }
+    }
+
+    @Test("手机消息按 CoreBluetooth 写入长度分片")
+    func outboundUsesMaximumWriteLength() throws {
+        let session = FujiBLESession()
+        let requestID = UUID()
+        let message = FujiMessage.actionResult(
+            requestID: requestID,
+            result: .init(
+                action: .foodSearch,
+                status: .succeeded,
+                candidates: [.init(candidateID: "candidate-1", name: "测试餐馆", reason: "距离近")]
+            )
+        )
+
+        let frames = try session.frames(
+            for: message,
+            maximumWriteValueLength: 20,
+            transferID: 4
+        )
+        #expect(frames.count > 1)
+        #expect(frames.allSatisfy { $0.count <= 20 })
+
+        var assembler = FujiFrameAssembler()
+        var result: Data?
+        for frame in frames {
+            result = try assembler.accept(frame, nowMS: 20_000) ?? result
+        }
+        #expect(try JSONDecoder().decode(FujiMessage.self, from: result!) == message)
+    }
+
+    @Test("拒绝错误方向的设备入站消息")
+    func rejectsPhoneDirectionInbound() throws {
+        let session = FujiBLESession()
+        let message = FujiMessage.protocolError(.internalError, message: "wrong direction")
+        let frames = try FujiFramer.frames(
+            for: JSONEncoder().encode(message),
+            mtu: 185,
+            transferID: 5
+        )
+
+        #expect(throws: FujiMessageValidationError.protocolError(.invalidPayload)) {
+            for frame in frames {
+                _ = try session.accept(frame, nowMS: 30_000)
+            }
+        }
+    }
 }
 
 @Suite("餐馆排序")

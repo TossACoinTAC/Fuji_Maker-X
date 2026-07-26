@@ -334,6 +334,35 @@ struct FujiMessage: Equatable, Identifiable {
             payload: .actionResult(result)
         )
     }
+
+    static func cancel(
+        requestID: UUID,
+        reason: String? = nil,
+        direction: FujiDirection = .phoneToDevice,
+        ttlMS: Int = 30_000
+    ) -> FujiMessage {
+        FujiMessage(
+            requestID: requestID,
+            direction: direction,
+            type: .cancel,
+            ttlMS: ttlMS,
+            payload: .cancel(.init(targetRequestID: requestID, reason: reason))
+        )
+    }
+
+    static func protocolError(
+        _ code: FujiProtocolErrorCode,
+        message: String,
+        direction: FujiDirection = .phoneToDevice,
+        ttlMS: Int = 30_000
+    ) -> FujiMessage {
+        FujiMessage(
+            direction: direction,
+            type: .protocolError,
+            ttlMS: ttlMS,
+            payload: .protocolError(.init(errorCode: code, message: message))
+        )
+    }
 }
 
 extension FujiMessage: Codable {
@@ -430,7 +459,11 @@ final class FujiMessageValidator {
         self.retentionMS = retentionMS
     }
 
-    func decode(_ data: Data, receivedAtMS: UInt64) throws -> FujiValidatedMessage {
+    func decode(
+        _ data: Data,
+        receivedAtMS: UInt64,
+        evaluatedAtMS: UInt64? = nil
+    ) throws -> FujiValidatedMessage {
         guard data.count <= FujiMessage.maximumJSONBytes else { throw failure(.payloadTooLarge) }
         let message: FujiMessage
         do {
@@ -438,15 +471,28 @@ final class FujiMessageValidator {
         } catch {
             throw failure(classifyDecodeFailure(data))
         }
-        return try validate(message, receivedAtMS: receivedAtMS)
+        return try validate(
+            message,
+            receivedAtMS: receivedAtMS,
+            evaluatedAtMS: evaluatedAtMS
+        )
     }
 
-    func validate(_ message: FujiMessage, receivedAtMS: UInt64) throws -> FujiValidatedMessage {
+    func validate(
+        _ message: FujiMessage,
+        receivedAtMS: UInt64,
+        evaluatedAtMS: UInt64? = nil
+    ) throws -> FujiValidatedMessage {
         guard message.version == FujiMessage.supportedVersion else { throw failure(.unsupportedVersion) }
         guard (FujiMessage.minimumTTLMS...FujiMessage.maximumTTLMS).contains(message.ttlMS) else {
             throw failure(.invalidPayload)
         }
         try validateSemantics(message)
+        if let evaluatedAtMS,
+           evaluatedAtMS >= receivedAtMS,
+           evaluatedAtMS - receivedAtMS >= UInt64(message.ttlMS) {
+            throw failure(.expired)
+        }
 
         seen.removeAll { receivedAtMS >= $0.receivedAtMS && receivedAtMS - $0.receivedAtMS >= retentionMS }
         guard !seen.contains(where: { $0.id == message.messageID }) else { throw failure(.duplicate) }

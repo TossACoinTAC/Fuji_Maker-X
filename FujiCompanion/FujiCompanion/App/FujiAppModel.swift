@@ -42,6 +42,26 @@ struct SessionEvent: Identifiable {
     let kind: SessionEventKind
 }
 
+#if DEBUG
+private enum BLETransportDiagnosticError: LocalizedError {
+    case unavailable
+    case disconnected
+    case missingSnapshot
+    case missingProtocolError(FujiProtocolErrorCode)
+    case reconnectFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: "当前传输不支持 BLE 诊断"
+        case .disconnected: "Fuji 尚未连接"
+        case .missingSnapshot: "设备未回传状态快照"
+        case .missingProtocolError(let code): "设备未回传 \(code.rawValue)"
+        case .reconnectFailed: "主动断线后未能恢复连接"
+        }
+    }
+}
+#endif
+
 @Observable
 @MainActor
 final class FujiAppModel {
@@ -60,6 +80,12 @@ final class FujiAppModel {
     private(set) var currentOrigin: GeoCoordinate?
     private(set) var activeRequestID: UUID?
     var presentedError: String?
+#if DEBUG
+    private(set) var isBLETransportTestRunning = false
+    private(set) var bleTransportTestResult: (succeeded: Bool, message: String)?
+    private(set) var isPrivateAudioTestRunning = false
+    private(set) var privateAudioTestResult: (succeeded: Bool, message: String)?
+#endif
 
     private let transport: DeviceTransport
     private let locationProvider: LocationProviding
@@ -69,6 +95,11 @@ final class FujiAppModel {
     private let validator = FujiMessageValidator()
     private var messageTask: Task<Void, Never>?
     private var started = false
+    private var hasEstablishedConnection = false
+    private var snapshotGeneration = 0
+#if DEBUG
+    private var diagnosticProtocolError: FujiProtocolErrorCode?
+#endif
 
     init(environment: AppEnvironment) {
         settings = environment.settings
@@ -90,7 +121,6 @@ final class FujiAppModel {
         transport.connect()
         connectionState = transport.connectionState
         deviceState = connectionState == .connected ? .idle : .disconnected
-        record("演示设备已连接", detail: "业务层通过 DeviceTransport 接收请求", kind: .device)
 
         messageTask = Task { [weak self, events = transport.events] in
             for await event in events {
@@ -104,6 +134,177 @@ final class FujiAppModel {
         guard let mock = transport as? MockDeviceTransport else { return }
         mock.simulateFoodRequest()
     }
+
+#if DEBUG
+    func runBLETransportTest() async {
+        guard !isBLETransportTestRunning else { return }
+        guard connectionState == .connected else {
+            show(BLETransportDiagnosticError.disconnected)
+            return
+        }
+        guard let diagnostics = transport as? DeviceTransportDiagnostics else {
+            show(BLETransportDiagnosticError.unavailable)
+            return
+        }
+
+        isBLETransportTestRunning = true
+        bleTransportTestResult = nil
+        diagnosticProtocolError = nil
+        statusMessage = "正在测试蓝牙链路"
+        record("开始 BLE 链路测试", detail: "成功、重复、超时、取消、断线恢复", kind: .device)
+        defer {
+            diagnosticProtocolError = nil
+            isBLETransportTestRunning = false
+        }
+
+        do {
+            let requestID = UUID()
+            let accepted = FujiMessage.actionResult(
+                requestID: requestID,
+                result: .init(action: .foodSearch, status: .accepted, message: "BLE diagnostic")
+            )
+
+            let successSnapshot = snapshotGeneration
+            try await transport.send(accepted)
+            guard await waitForDiagnostic(condition: {
+                self.snapshotGeneration > successSnapshot
+            }) else {
+                throw BLETransportDiagnosticError.missingSnapshot
+            }
+            record("BLE 成功路径通过", detail: "写入已确认，设备回传完整快照", kind: .action)
+
+            diagnosticProtocolError = nil
+            try await transport.send(accepted)
+            guard await waitForDiagnostic(condition: {
+                self.diagnosticProtocolError == .duplicate
+            }) else {
+                throw BLETransportDiagnosticError.missingProtocolError(.duplicate)
+            }
+            record("BLE 重复路径通过", detail: "相同 message_id 被设备拒绝", kind: .action)
+
+            diagnosticProtocolError = nil
+            let timeoutMessage = FujiMessage.actionResult(
+                requestID: UUID(),
+                result: .init(action: .foodSearch, status: .accepted, message: "BLE timeout diagnostic")
+            )
+            try await diagnostics.sendIncompleteTransferForTimeout(timeoutMessage)
+            guard await waitForDiagnostic(attempts: 30, condition: {
+                self.diagnosticProtocolError == .expired
+            }) else {
+                throw BLETransportDiagnosticError.missingProtocolError(.expired)
+            }
+            record("BLE 超时路径通过", detail: "不完整 transfer 在 5 秒后过期", kind: .action)
+
+            let cancelSnapshot = snapshotGeneration
+            try await transport.send(.cancel(requestID: requestID, reason: "BLE diagnostic complete"))
+            guard await waitForDiagnostic(condition: {
+                self.snapshotGeneration > cancelSnapshot
+            }) else {
+                throw BLETransportDiagnosticError.missingSnapshot
+            }
+            record("BLE 取消路径通过", detail: "cancel 写入后设备回传快照", kind: .action)
+
+            transport.disconnect()
+            guard await waitForDiagnostic(condition: {
+                self.connectionState == .disconnected
+            }) else {
+                throw BLETransportDiagnosticError.reconnectFailed
+            }
+            transport.connect()
+            guard await waitForDiagnostic(attempts: 150, condition: {
+                self.connectionState == .connected
+            }) else {
+                throw BLETransportDiagnosticError.reconnectFailed
+            }
+
+            statusMessage = "蓝牙链路测试通过"
+            bleTransportTestResult = (
+                true,
+                "通过：成功、重复、超时、取消和断线恢复均符合预期"
+            )
+            record("BLE 链路测试通过", detail: "断线后已恢复加密订阅", kind: .action)
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            statusMessage = "蓝牙链路测试失败"
+            bleTransportTestResult = (false, "失败：\(message)")
+            presentedError = message
+            record("BLE 链路测试失败", detail: message, kind: .error)
+        }
+    }
+
+    func runPrivateAudioTest(expectRouteLoss: Bool) async {
+        guard !isPrivateAudioTestRunning else { return }
+        guard audioRouteMonitor.isPrivateRouteAvailable else {
+            privateAudioTestResult = (false, "失败：未检测到私密耳机路由")
+            return
+        }
+
+        isPrivateAudioTestRunning = true
+        privateAudioTestResult = nil
+        let routeName = audioRouteMonitor.routeName
+        let testName = expectRouteLoss ? "耳机断开保护" : "AirPods 私密播报"
+        record("开始\(testName)测试", detail: routeName, kind: .device)
+        defer { isPrivateAudioTestRunning = false }
+
+        let text: String
+        if expectRouteLoss {
+            text = Array(
+                repeating: "这是 Fuji 耳机中途断开测试。播报期间断开 AirPods，语音应立即停止。",
+                count: 5
+            ).joined(separator: " ")
+        } else {
+            text = "Fuji AirPods 私密播报测试。背景音乐应暂时降低音量，并在这段语音结束后恢复。"
+        }
+        let outcome = await speechOutput.speak(text, policy: .privateOnly)
+
+        switch (expectRouteLoss, outcome) {
+        case (false, .spoken):
+            privateAudioTestResult = (true, "通过：已通过 \(routeName) 完成私密播报")
+        case (true, .routeLost):
+            privateAudioTestResult = (true, "通过：耳机断开后播报已立即停止")
+        case (true, .spoken):
+            let routeWasRemoved = await waitForPrivateRouteLoss()
+            privateAudioTestResult = routeWasRemoved
+                ? (true, "通过：系统已移除耳机路由，未切换到公开输出；未收到播报中断回调")
+                : (false, "失败：播报结束后仍未检测到耳机断开")
+        case (false, .routeLost):
+            privateAudioTestResult = (false, "失败：播报期间耳机路由丢失")
+        case (_, .privateRouteUnavailable):
+            privateAudioTestResult = (false, "失败：私密耳机路由不可用")
+        case (_, .failed(let message)):
+            privateAudioTestResult = (false, "失败：\(message)")
+        }
+
+        if let result = privateAudioTestResult {
+            record(
+                result.succeeded ? "\(testName)测试通过" : "\(testName)测试失败",
+                detail: result.message,
+                kind: result.succeeded ? .action : .error
+            )
+        }
+    }
+
+    private func waitForPrivateRouteLoss() async -> Bool {
+        for _ in 0..<50 {
+            if !audioRouteMonitor.isPrivateRouteAvailable {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return !audioRouteMonitor.isPrivateRouteAvailable
+    }
+
+    private func waitForDiagnostic(
+        attempts: Int = 40,
+        condition: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        for _ in 0..<attempts {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return condition()
+    }
+#endif
 
     func searchRestaurants() async {
         guard settings.amapPrivacyAccepted else {
@@ -256,6 +457,7 @@ final class FujiAppModel {
     private func handle(_ event: DeviceTransportEvent) {
         switch event {
         case .connectionChanged(let state):
+            let previousState = connectionState
             connectionState = state
             if state == .disconnected {
                 deviceState = .disconnected
@@ -264,7 +466,21 @@ final class FujiAppModel {
             } else if state == .connected, deviceState == .disconnected {
                 deviceState = .idle
             }
+            guard state != previousState else { return }
+            switch state {
+            case .connecting:
+                break
+            case .connected:
+                hasEstablishedConnection = true
+                record("Fuji 已连接", detail: "加密蓝牙链路和状态订阅已就绪", kind: .device)
+            case .disconnected:
+                if hasEstablishedConnection {
+                    hasEstablishedConnection = false
+                    record("Fuji 已断开", detail: "等待蓝牙重连并清除未完成事务", kind: .error)
+                }
+            }
         case .stateSnapshot(let snapshot):
+            snapshotGeneration += 1
             activeRequestID = snapshot.activeRequestID
             deviceState = appState(from: snapshot.deviceState)
         case .message(let message):
@@ -292,6 +508,19 @@ final class FujiAppModel {
                 if activeRequestID == payload.targetRequestID {
                     deleteSessionData()
                 }
+            case .protocolError(let payload):
+#if DEBUG
+                diagnosticProtocolError = payload.errorCode
+                let expectedDiagnostic = isBLETransportTestRunning &&
+                    (payload.errorCode == .duplicate || payload.errorCode == .expired)
+#else
+                let expectedDiagnostic = false
+#endif
+                record(
+                    expectedDiagnostic ? "设备协议测试响应" : "设备协议错误",
+                    detail: "\(payload.errorCode.rawValue)：\(payload.message)",
+                    kind: expectedDiagnostic ? .device : .error
+                )
             default:
                 record("收到设备消息", detail: message.type.rawValue, kind: .device)
             }

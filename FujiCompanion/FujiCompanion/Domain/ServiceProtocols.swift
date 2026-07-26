@@ -9,7 +9,7 @@ enum DeviceConnectionState: String, Equatable {
         switch self {
         case .disconnected: "未连接"
         case .connecting: "连接中"
-        case .connected: "演示设备已连接"
+        case .connected: "Fuji 已连接"
         }
     }
 }
@@ -29,6 +29,13 @@ protocol DeviceTransport: AnyObject {
     func disconnect()
     func send(_ message: FujiMessage) async throws
 }
+
+#if DEBUG
+@MainActor
+protocol DeviceTransportDiagnostics: AnyObject {
+    func sendIncompleteTransferForTimeout(_ message: FujiMessage) async throws
+}
+#endif
 
 @MainActor
 protocol LocationProviding: AnyObject {

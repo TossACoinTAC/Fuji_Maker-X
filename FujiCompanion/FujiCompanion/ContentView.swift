@@ -487,11 +487,76 @@ private struct SettingsView: View {
             Form {
                 Section("连接") {
                     LabeledContent("Fuji", value: model.connectionState.label)
-                    LabeledContent("设备协议", value: "模拟传输 · v1")
-                    Text("真实 BLE、配网和板型 UUID 将在成品板协议确定后接入。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    LabeledContent("设备协议", value: "加密 BLE · v1")
                 }
+
+#if DEBUG
+                Section("开发测试") {
+                    Button {
+                        Task { await model.runBLETransportTest() }
+                    } label: {
+                        Label("运行 BLE 链路测试", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .disabled(
+                        model.connectionState != .connected || model.isBLETransportTestRunning
+                    )
+                    .accessibilityIdentifier("debug.runBLETransportTest")
+
+                    if model.isBLETransportTestRunning {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityLabel("BLE 链路测试进行中")
+                    } else if let result = model.bleTransportTestResult {
+                        Label(
+                            result.message,
+                            systemImage: result.succeeded
+                                ? "checkmark.circle.fill"
+                                : "xmark.octagon.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(result.succeeded ? Color.green : Color.red)
+                        .accessibilityIdentifier("debug.bleTransportTestResult")
+                    }
+
+                    Button {
+                        Task { await model.runPrivateAudioTest(expectRouteLoss: false) }
+                    } label: {
+                        Label("测试 AirPods 私密播报", systemImage: "airpodspro")
+                    }
+                    .disabled(
+                        !model.audioRouteMonitor.isPrivateRouteAvailable ||
+                            model.isPrivateAudioTestRunning
+                    )
+                    .accessibilityIdentifier("debug.runPrivateAudioTest")
+
+                    Button {
+                        Task { await model.runPrivateAudioTest(expectRouteLoss: true) }
+                    } label: {
+                        Label("测试耳机中途断开", systemImage: "ear.badge.waveform")
+                    }
+                    .disabled(
+                        !model.audioRouteMonitor.isPrivateRouteAvailable ||
+                            model.isPrivateAudioTestRunning
+                    )
+                    .accessibilityIdentifier("debug.runPrivateAudioRouteLossTest")
+
+                    if model.isPrivateAudioTestRunning {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityLabel("AirPods 音频测试进行中")
+                    } else if let result = model.privateAudioTestResult {
+                        Label(
+                            result.message,
+                            systemImage: result.succeeded
+                                ? "checkmark.circle.fill"
+                                : "xmark.octagon.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(result.succeeded ? Color.green : Color.red)
+                        .accessibilityIdentifier("debug.privateAudioTestResult")
+                    }
+                }
+#endif
 
                 Section("音频") {
                     LabeledContent(
