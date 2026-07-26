@@ -114,6 +114,11 @@ void FujiExpressionController::SetScreenEnabled(bool enabled) {
     Tick(true);
 }
 
+void FujiExpressionController::TriggerBargeInTransition() {
+    interrupting_request_until_us_.store(esp_timer_get_time() + 500 * 1000,
+                                         std::memory_order_relaxed);
+}
+
 void FujiExpressionController::TimerCallback(lv_timer_t* timer) {
     auto* controller = static_cast<FujiExpressionController*>(lv_timer_get_user_data(timer));
     if (controller != nullptr) {
@@ -155,6 +160,8 @@ const char* FujiExpressionController::AssetStem(FujiExpression expression) {
             return "fuji_connecting";
         case FujiExpression::kSpeaking:
             return "fuji_speaking";
+        case FujiExpression::kInterrupting:
+            return nullptr;
         case FujiExpression::kSuccess:
             return "fuji_success";
         case FujiExpression::kError:
@@ -172,7 +179,8 @@ const char* FujiExpressionController::AssetStem(FujiExpression expression) {
 
 bool FujiExpressionController::IsAnimatedState(FujiExpression expression) {
     return expression == FujiExpression::kListening || expression == FujiExpression::kThinking ||
-           expression == FujiExpression::kConnecting || expression == FujiExpression::kSpeaking;
+           expression == FujiExpression::kConnecting || expression == FujiExpression::kSpeaking ||
+           expression == FujiExpression::kInterrupting;
 }
 
 bool FujiExpressionController::GifFrameRateIsSafe(const uint8_t* data, size_t size) {
@@ -311,14 +319,26 @@ void FujiExpressionController::PrewarmCoreAssets() {
 }
 
 void FujiExpressionController::Tick(bool force) {
-    const FujiExpression next = ResolveFujiExpression(ReadInputs());
+    const int64_t now_us = esp_timer_get_time();
+    const FujiExpression resolved = ResolveFujiExpression(ReadInputs());
+    const int64_t request_until_us =
+        interrupting_request_until_us_.load(std::memory_order_relaxed);
+    if (resolved == FujiExpression::kListening && request_until_us >= now_us) {
+        interrupting_until_us_ = now_us + kInterruptingDurationUs;
+        interrupting_request_until_us_.store(0, std::memory_order_relaxed);
+    } else if (request_until_us != 0 && request_until_us < now_us) {
+        interrupting_request_until_us_.store(0, std::memory_order_relaxed);
+    }
+    const FujiExpression next =
+        resolved == FujiExpression::kListening && now_us < interrupting_until_us_
+            ? FujiExpression::kInterrupting
+            : resolved;
     if (force || next != current_) {
         ApplyState(next);
     }
     if (next != FujiExpression::kPaused) {
         AnimateFrame();
     }
-    const int64_t now_us = esp_timer_get_time();
     if (now_us >= next_metrics_at_us_) {
         const int64_t elapsed_periods =
             1 + (now_us - next_metrics_at_us_) / kMetricsPeriodUs;
@@ -421,6 +441,15 @@ void FujiExpressionController::ApplyFallback(FujiExpression expression) {
         case FujiExpression::kSpeaking:
             lv_obj_set_size(mouth_, 94, 42);
             break;
+        case FujiExpression::kInterrupting:
+            lv_obj_set_style_bg_color(mouth_, lv_color_hex(kYellow), 0);
+            lv_obj_set_size(left_eye_, 58, 86);
+            lv_obj_set_size(right_eye_, 58, 86);
+            lv_obj_set_size(mouth_, 54, 18);
+            for (auto* dot : dots_) {
+                lv_obj_remove_flag(dot, LV_OBJ_FLAG_HIDDEN);
+            }
+            break;
         case FujiExpression::kSuccess:
             lv_obj_set_size(left_eye_, 60, 14);
             lv_obj_set_size(right_eye_, 60, 14);
@@ -473,7 +502,8 @@ void FujiExpressionController::AnimateFrame() {
         lv_obj_set_height(mouth_, 42 + pulse * 4);
     } else if (current_ == FujiExpression::kListening ||
                current_ == FujiExpression::kConnecting ||
-               current_ == FujiExpression::kThinking) {
+               current_ == FujiExpression::kThinking ||
+               current_ == FujiExpression::kInterrupting) {
         for (size_t i = 0; i < dots_.size(); ++i) {
             const uint8_t step = static_cast<uint8_t>((frame_ + i * 2) % kPulse.size());
             lv_obj_set_style_opa(dots_[i], static_cast<lv_opa_t>(120 + step * 16), 0);

@@ -33,6 +33,8 @@
 #define MAIN_EVENT_STOP_LISTENING       (1 << 11)
 #define MAIN_EVENT_STATE_CHANGED        (1 << 12)
 #define MAIN_EVENT_PLAYBACK_DRAINED     (1 << 13)
+#define MAIN_EVENT_BARGE_IN             (1 << 14)
+#define MAIN_EVENT_VOICE_CAPTURE_READY  (1 << 15)
 
 
 enum AecMode {
@@ -105,6 +107,9 @@ public:
      */
     void StopListening();
 
+    /** Request a speaking-to-listening interruption from a local input. */
+    void BargeIn();
+
     void Reboot();
     void WakeWordInvoke(const std::string& wake_word);
     bool UpgradeFirmware(const std::string& url, const std::string& version = "");
@@ -146,6 +151,11 @@ private:
     bool assets_version_checked_ = false;
     bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
     bool pending_listening_start_ = false;  // Waiting for playback to drain before starting listening (auto mode)
+    std::atomic<int64_t> pending_wake_word_at_us_{0};
+    std::atomic<int64_t> pending_barge_in_at_us_{0};
+    int64_t active_barge_in_at_us_ = 0;
+    bool barge_in_waiting_for_silence_ = false;
+    bool barge_in_waiting_for_capture_ = false;
     int clock_ticks_ = 0;
     TaskHandle_t activation_task_handle_ = nullptr;
 
@@ -155,6 +165,7 @@ private:
     void HandleToggleChatEvent();
     void HandleStartListeningEvent();
     void HandleStopListeningEvent();
+    void HandleBargeInEvent();
     void HandleNetworkConnectedEvent();
     void HandleNetworkDisconnectedEvent();
     void HandleActivationDoneEvent();
@@ -164,6 +175,7 @@ private:
     void ContinueWakeWordInvoke(const std::string& wake_word);
     void StartListeningAudio();
     void ConfigureWakeWordForListening();
+    void PerformBargeIn(AbortReason reason, int64_t requested_at_us, const char* source);
 
     // Activation task (runs in background)
     void ActivationTask();

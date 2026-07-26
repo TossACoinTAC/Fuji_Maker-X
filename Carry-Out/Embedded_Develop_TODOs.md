@@ -59,6 +59,17 @@ Completed gates:
   and 1,008 bytes PSRAM drift from the five-minute warm baseline, below the
   8 KiB limit. There was no reset, watchdog, display fault or speaker
   underrun, and the user confirmed normal visual and audio output.
+- The speaking-interrupt gate passed on 2026-07-26. Five consecutive
+  wake-phrase interrupts on the final race-hardened firmware stopped hardware
+  output in 41/37/14/65/30 ms and made the microphone ready in
+  44/76/29/73/107 ms, below the 100/250 ms gates. The final screen-tap fallback
+  measured 26 ms to silence and 186 ms to microphone readiness. Each interrupt
+  entered the local `interrupting` expression before real listening and
+  accepted a follow-up utterance. No old playback generation re-enabled I2S TX
+  after cutoff. The user confirmed immediate cutoff, no residual speech, pop or
+  audible underrun, correct expression behavior, and normal completion. There
+  was no reset or watchdog event; the BOOT button remains reserved for later
+  BLE pairing behavior.
 
 Build status:
 
@@ -72,7 +83,7 @@ Build status:
 - Final no-change builds for probe/display/microphone/speaker/full measured
   4.47/4.28/4.20/4.01/4.14 seconds. All five merged binaries and release ZIPs
   were regenerated from the final source.
-- Host static coverage is 37 tests. It checks pins, variants, partitions,
+- Host static coverage is 38 tests. It checks pins, variants, partitions,
   single board registration, diagnostic isolation, Philips audio framing and
   the no-upstream-modification constraint, including IMU, RTC, power-key and
   expression integration. A standalone host test covers expression priority
@@ -84,21 +95,56 @@ deliberately outside the completed migration gates:
 1. Replace the accepted placeholder expression pack with final art following
    `Images/Fuji_Expression_Asset_Requirements.md`; keep the controller and
    upstream panel/touch driver boundary unchanged.
-2. On a separate `dev/embedded-barge-in` branch, add the confirmed speaking
-   interrupt path: the wake phrase is primary and a short screen tap is the
-   fallback. Stop TTS immediately, enter real listening without waiting for a
-   visual transition, and verify five consecutive interrupts, silence within
-   100 ms and recording within 250 ms. The local `interrupting` animation is
-   not a protocol snapshot state.
-3. Validate the selected XiaoZhi cloud TTS provider/voice for Japanese and
+2. Validate the selected XiaoZhi cloud TTS provider/voice for Japanese and
    Korean. The 2026-07-26 run displayed those subtitles without audio while
    French and German played normally; do not change the device codec until a
    provider/voice A/B test proves an embedded fault.
+3. After the BLE configuration channel is stable, expose wake-word and
+   speaking-interrupt keyword selection in Fuji Companion. Follow the staged
+   plan below; do not treat arbitrary text as an immediately usable on-device
+   model.
 4. Validate retained RTC time only after its backup-power context is understood
    and safe; the current read-only driver must not silently set the clock.
 5. Keep the battery disconnected until voltage, polarity, protection and the
    connector have been checked separately. TF card and external breadboard
    modules remain outside this migration.
+
+### Planned user-configurable wake and interruption keywords
+
+This is a post-BLE configuration feature, not a new protocol-v1 P0 action. The
+iPhone app owns the settings UI and the device remains the authority on which
+offline recognition models are installed and safe to activate.
+
+- P0 customization selects from a firmware-supported catalog of packaged,
+  locally recognized models. The default uses the same `你好小智` model for
+  idle wake and speaking interruption; an advanced setting may choose separate
+  supported models for the two roles.
+- The capability report or configuration snapshot must expose catalog IDs,
+  display names, languages, model versions and hashes, estimated memory use,
+  active wake/interruption IDs, and whether separate-role selection is
+  supported. The app must not offer a value the connected firmware cannot run.
+- A settings change is transactional: validate compatibility, size, signature
+  and checksum; stage it without replacing the current working model; activate
+  only after device acknowledgement; then report the effective configuration
+  back to the app. Power loss, boot failure or recognition-engine failure rolls
+  back to the last-known-good model.
+- Keep a packaged recovery phrase and the screen-tap listening fallback. BLE
+  pairing/reset controls remain independent, so a bad keyword choice cannot
+  lock the user out or consume the BOOT-button pairing gesture.
+- Free-form text is a later, separate feature. It requires a supported
+  text-to-wake-model generation pipeline, model licensing and privacy rules,
+  signed delivery, storage budgeting, rollback, and false-accept/false-reject
+  validation. Sending a UTF-8 string alone does not create a usable WakeNet
+  model and must be rejected rather than shown as active.
+- Configuration transport must be designed as a bounded protocol extension
+  after the frozen v1 food actions. It needs request correlation, explicit
+  accepted/applied/failed results, cancellation, idempotency and a full
+  reconnect snapshot; it must not be smuggled in as an unknown v1 action.
+- Acceptance covers quiet speech, room noise, music and device TTS playback;
+  wake and speaking-interruption paths are measured separately. It also covers
+  repeated updates, invalid/corrupt models, disconnect and power loss during
+  staging, rollback, app/device state agreement, and the existing latency and
+  no-residual-audio barge-in gates.
 
 ## 1. Current baseline and constraints
 
@@ -838,6 +884,9 @@ Exit: all P0 state transitions can be demonstrated offline from touch, button, a
 - [ ] Implement framing, schema validation, request IDs, expiry, and duplicate rejection.
 - [ ] Implement pairing/reconnect and complete state snapshot.
 - [ ] Implement output_route_set and output_route_verified without assuming earphone presence.
+- [ ] Define a post-v1 bounded configuration channel for the device-supported
+      wake/interruption model catalog and transactional selection; do not add it
+      to the frozen food-action list.
 - [ ] Log BLE RSSI, reconnect count, queue overflow, and protocol errors.
 
 Exit: a simple phone test client can connect, read state, send a command, receive an event, and verify route loss without local speaker leakage.

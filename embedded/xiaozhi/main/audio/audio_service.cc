@@ -266,8 +266,9 @@ void AudioService::AudioInputTask() {
             }
         }
 
-        if (audio_input_need_warmup_.exchange(false)) {
-            vTaskDelay(pdMS_TO_TICKS(120));
+        const uint32_t warmup_ms = audio_input_warmup_ms_.exchange(0);
+        if (warmup_ms > 0) {
+            vTaskDelay(pdMS_TO_TICKS(warmup_ms));
             continue;
         }
 
@@ -299,6 +300,11 @@ void AudioService::AudioInputTask() {
             int samples = 160; // 10ms
             std::vector<int16_t> data;
             if (ReadAudioData(data, 16000, samples)) {
+                if ((bits & AS_EVENT_AUDIO_PROCESSOR_RUNNING) != 0 &&
+                    voice_capture_ready_pending_.exchange(false) &&
+                    callbacks_.on_voice_capture_ready) {
+                    callbacks_.on_voice_capture_ready();
+                }
                 audio_engine_->Feed(std::move(data));
                 continue;
             }
@@ -327,17 +333,27 @@ void AudioService::AudioOutputTask() {
         audio_queue_cv_.notify_all();
         lock.unlock();
 
-        if (!codec_->output_enabled()) {
-            esp_timer_stop(audio_power_timer_);
-            esp_timer_start_periodic(audio_power_timer_, AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
-            codec_->EnableOutput(true);
+        bool played = false;
+        if (task->playback_generation == playback_generation_.load()) {
+            if (!codec_->output_enabled()) {
+                esp_timer_stop(audio_power_timer_);
+                esp_timer_start_periodic(audio_power_timer_,
+                                         AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
+                codec_->EnableOutput(true);
+            }
+            if (task->playback_generation == playback_generation_.load()) {
+                codec_->OutputData(task->pcm);
+                played = true;
+            } else if (codec_->output_enabled()) {
+                codec_->EnableOutput(false);
+            }
         }
 
-        codec_->OutputData(task->pcm);
-
-        /* Update the last output time */
-        last_output_time_ = std::chrono::steady_clock::now();
-        debug_statistics_.playback_count++;
+        if (played) {
+            /* Update the last output time */
+            last_output_time_ = std::chrono::steady_clock::now();
+            debug_statistics_.playback_count++;
+        }
 
         bool notify_drained = false;
         lock.lock();
@@ -384,6 +400,7 @@ void AudioService::OpusCodecTask() {
             auto task = std::make_unique<AudioTask>();
             task->type = kAudioTaskTypeDecodeToPlaybackQueue;
             task->timestamp = packet->timestamp;
+            task->playback_generation = generation;
 
             SetDecodeSampleRate(packet->sample_rate, packet->frame_duration);
             bool decoded = false;
@@ -651,7 +668,7 @@ void AudioService::EnableWakeWordDetection(bool enable) {
     }
 }
 
-void AudioService::EnableVoiceProcessing(bool enable) {
+void AudioService::EnableVoiceProcessing(bool enable, uint32_t warmup_ms) {
     ESP_LOGD(TAG, "%s voice processing", enable ? "Enabling" : "Disabling");
 
     if (enable) {
@@ -659,7 +676,8 @@ void AudioService::EnableVoiceProcessing(bool enable) {
             return;
         }
         ResetDecoder();
-        audio_input_need_warmup_ = true;
+        audio_input_warmup_ms_.store(warmup_ms);
+        voice_capture_ready_pending_.store(true);
         {
             std::lock_guard<std::mutex> lock(input_resampler_mutex_);
             if (input_resampler_ != nullptr) {
@@ -669,6 +687,8 @@ void AudioService::EnableVoiceProcessing(bool enable) {
         audio_engine_->EnableVoiceProcessing(true);
         xEventGroupSetBits(event_group_, AS_EVENT_AUDIO_PROCESSOR_RUNNING);
     } else {
+        audio_input_warmup_ms_.store(0);
+        voice_capture_ready_pending_.store(false);
         if (audio_engine_initialized_) {
             audio_engine_->EnableVoiceProcessing(false);
         }
@@ -759,6 +779,13 @@ void AudioService::ResetDecoder() {
     }
     if (notify_drained && callbacks_.on_playback_drained) {
         callbacks_.on_playback_drained();
+    }
+}
+
+void AudioService::InterruptPlayback() {
+    ResetDecoder();
+    if (codec_ != nullptr && codec_->output_enabled()) {
+        codec_->EnableOutput(false);
     }
 }
 

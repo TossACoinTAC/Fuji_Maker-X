@@ -30,6 +30,8 @@ int main() {
     assert(FujiExpressionHintFromName("offline") == FujiExpression::kOffline);
     assert(FujiExpressionHintFromName("thinking") == FujiExpression::kThinking);
     assert(FujiExpressionHintFromName("surprised") == FujiExpression::kIdle);
+    assert(std::string_view(FujiExpressionName(FujiExpression::kInterrupting)) ==
+           "interrupting");
 
     std::cout << "Fuji expression policy tests passed\n";
     return 0;

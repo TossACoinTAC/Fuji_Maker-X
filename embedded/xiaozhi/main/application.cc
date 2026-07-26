@@ -75,6 +75,7 @@ void Application::Initialize() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_SEND_AUDIO);
     };
     callbacks.on_wake_word_detected = [this](const std::string& wake_word) {
+        pending_wake_word_at_us_.store(esp_timer_get_time(), std::memory_order_relaxed);
         xEventGroupSetBits(event_group_, MAIN_EVENT_WAKE_WORD_DETECTED);
     };
     callbacks.on_vad_change = [this](bool speaking) {
@@ -82,6 +83,9 @@ void Application::Initialize() {
     };
     callbacks.on_playback_drained = [this]() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_PLAYBACK_DRAINED);
+    };
+    callbacks.on_voice_capture_ready = [this]() {
+        xEventGroupSetBits(event_group_, MAIN_EVENT_VOICE_CAPTURE_READY);
     };
     audio_service_.SetCallbacks(callbacks);
 
@@ -174,7 +178,8 @@ void Application::Run() {
         MAIN_EVENT_VAD_CHANGE | MAIN_EVENT_CLOCK_TICK | MAIN_EVENT_ERROR |
         MAIN_EVENT_NETWORK_CONNECTED | MAIN_EVENT_NETWORK_DISCONNECTED | MAIN_EVENT_TOGGLE_CHAT |
         MAIN_EVENT_START_LISTENING | MAIN_EVENT_STOP_LISTENING | MAIN_EVENT_ACTIVATION_DONE |
-        MAIN_EVENT_STATE_CHANGED | MAIN_EVENT_PLAYBACK_DRAINED;
+        MAIN_EVENT_STATE_CHANGED | MAIN_EVENT_PLAYBACK_DRAINED | MAIN_EVENT_BARGE_IN |
+        MAIN_EVENT_VOICE_CAPTURE_READY;
 
     while (true) {
         auto bits = xEventGroupWaitBits(event_group_, ALL_EVENTS, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -202,6 +207,12 @@ void Application::Run() {
         }
 
         if (bits & MAIN_EVENT_PLAYBACK_DRAINED) {
+            if (barge_in_waiting_for_silence_ && audio_service_.IsPlaybackIdle()) {
+                const int64_t latency_ms =
+                    (esp_timer_get_time() - active_barge_in_at_us_) / 1000;
+                ESP_LOGI(TAG, "barge-in playback silent latency=%lld ms", latency_ms);
+                barge_in_waiting_for_silence_ = false;
+            }
             // Deferred listening start (auto mode): the playback queue has
             // drained, so it is now safe to enable voice processing.
             if (pending_listening_start_ && GetDeviceState() == kDeviceStateListening &&
@@ -221,6 +232,20 @@ void Application::Run() {
 
         if (bits & MAIN_EVENT_STOP_LISTENING) {
             HandleStopListeningEvent();
+        }
+
+        if (bits & MAIN_EVENT_BARGE_IN) {
+            HandleBargeInEvent();
+        }
+
+        if (bits & MAIN_EVENT_VOICE_CAPTURE_READY) {
+            if (barge_in_waiting_for_capture_) {
+                const int64_t latency_ms =
+                    (esp_timer_get_time() - active_barge_in_at_us_) / 1000;
+                ESP_LOGI(TAG, "barge-in microphone ready latency=%lld ms", latency_ms);
+                barge_in_waiting_for_capture_ = false;
+                active_barge_in_at_us_ = 0;
+            }
         }
 
         if (bits & MAIN_EVENT_SEND_AUDIO) {
@@ -703,6 +728,16 @@ void Application::StartListening() { xEventGroupSetBits(event_group_, MAIN_EVENT
 
 void Application::StopListening() { xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_LISTENING); }
 
+void Application::BargeIn() {
+    if (GetDeviceState() != kDeviceStateSpeaking) {
+        return;
+    }
+    int64_t expected = 0;
+    pending_barge_in_at_us_.compare_exchange_strong(
+        expected, esp_timer_get_time(), std::memory_order_relaxed);
+    xEventGroupSetBits(event_group_, MAIN_EVENT_BARGE_IN);
+}
+
 void Application::HandleToggleChatEvent() {
     auto state = GetDeviceState();
 
@@ -808,6 +843,12 @@ void Application::HandleStopListeningEvent() {
     }
 }
 
+void Application::HandleBargeInEvent() {
+    const int64_t requested_at_us =
+        pending_barge_in_at_us_.exchange(0, std::memory_order_relaxed);
+    PerformBargeIn(kAbortReasonNone, requested_at_us, "screen_tap");
+}
+
 void Application::HandleWakeWordDetectedEvent() {
     if (!protocol_) {
         return;
@@ -815,27 +856,25 @@ void Application::HandleWakeWordDetectedEvent() {
 
     auto state = GetDeviceState();
     auto wake_word = audio_service_.GetLastWakeWord();
+    const int64_t detected_at_us =
+        pending_wake_word_at_us_.exchange(0, std::memory_order_relaxed);
     ESP_LOGI(TAG, "Wake word detected: %s (state: %d)", wake_word.c_str(), (int)state);
 
     if (state == kDeviceStateIdle) {
         BeginWakeWordInvoke(wake_word);
-    } else if (state == kDeviceStateSpeaking || state == kDeviceStateListening) {
+    } else if (state == kDeviceStateSpeaking) {
+        PerformBargeIn(kAbortReasonWakeWordDetected, detected_at_us, "wake_word");
+    } else if (state == kDeviceStateListening) {
         AbortSpeaking(kAbortReasonWakeWordDetected);
         // Clear send queue to avoid sending residues to server
         while (audio_service_.PopPacketFromSendQueue())
             ;
 
-        if (state == kDeviceStateListening) {
-            protocol_->SendStartListening(GetDefaultListeningMode());
-            audio_service_.ResetDecoder();
-            audio_service_.PlaySound(Lang::Sounds::OGG_POPUP);
-            // Re-enable wake word detection as it was stopped by the detection itself
-            audio_service_.EnableWakeWordDetection(true);
-        } else {
-            // Play popup sound and start listening again
-            play_popup_on_listening_ = true;
-            SetListeningMode(GetDefaultListeningMode());
-        }
+        protocol_->SendStartListening(GetDefaultListeningMode());
+        audio_service_.ResetDecoder();
+        audio_service_.PlaySound(Lang::Sounds::OGG_POPUP);
+        // Re-enable wake word detection as it was stopped by the detection itself
+        audio_service_.EnableWakeWordDetection(true);
     } else if (state == kDeviceStateActivating) {
         // Restart the activation check if the wake word is detected during activation
         SetDeviceState(kDeviceStateIdle);
@@ -939,7 +978,8 @@ void Application::HandleStateChangedEvent() {
                 // voice processing. This prevents audio truncation when STOP arrives
                 // late due to network jitter. Instead of blocking the main loop here,
                 // defer the start until MAIN_EVENT_PLAYBACK_DRAINED arrives.
-                if (listening_mode_ == kListeningModeAutoStop && !audio_service_.IsPlaybackIdle()) {
+                if (listening_mode_ == kListeningModeAutoStop &&
+                    !barge_in_waiting_for_capture_ && !audio_service_.IsPlaybackIdle()) {
                     pending_listening_start_ = true;
                 } else {
                     StartListeningAudio();
@@ -977,7 +1017,7 @@ void Application::StartListeningAudio() {
 
     // Send the start listening command
     protocol_->SendStartListening(listening_mode_);
-    audio_service_.EnableVoiceProcessing(true);
+    audio_service_.EnableVoiceProcessing(true, barge_in_waiting_for_capture_ ? 0 : 120);
 
     ConfigureWakeWordForListening();
 
@@ -1012,6 +1052,34 @@ void Application::AbortSpeaking(AbortReason reason) {
     if (protocol_) {
         protocol_->SendAbortSpeaking(reason);
     }
+}
+
+void Application::PerformBargeIn(AbortReason reason, int64_t requested_at_us,
+                                 const char* source) {
+    if (GetDeviceState() != kDeviceStateSpeaking || protocol_ == nullptr) {
+        return;
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    active_barge_in_at_us_ = requested_at_us > 0 ? requested_at_us : now_us;
+    barge_in_waiting_for_silence_ = true;
+    barge_in_waiting_for_capture_ = true;
+    ESP_LOGI(TAG, "barge-in source=%s dispatch_latency=%lld ms", source,
+             (now_us - active_barge_in_at_us_) / 1000);
+
+    AbortSpeaking(reason);
+    while (audio_service_.PopPacketFromSendQueue())
+        ;
+    Board::GetInstance().GetDisplay()->SetBargeInTransition();
+    play_popup_on_listening_ = false;
+    // Close the speaking-state audio ingress before invalidating the final
+    // in-flight decode/output generation.
+    SetListeningMode(GetDefaultListeningMode());
+    audio_service_.InterruptPlayback();
+    const int64_t silent_latency_ms =
+        (esp_timer_get_time() - active_barge_in_at_us_) / 1000;
+    ESP_LOGI(TAG, "barge-in playback silent latency=%lld ms", silent_latency_ms);
+    barge_in_waiting_for_silence_ = false;
 }
 
 void Application::SetListeningMode(ListeningMode mode) {

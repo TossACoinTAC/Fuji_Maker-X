@@ -70,6 +70,8 @@ const char* FujiExpressionName(FujiExpression expression) {
             return "connecting";
         case FujiExpression::kSpeaking:
             return "speaking";
+        case FujiExpression::kInterrupting:
+            return "interrupting";
         case FujiExpression::kSuccess:
             return "success";
         case FujiExpression::kError:
