@@ -84,6 +84,7 @@ private:
     bool ConnectionIsAuthenticated(uint16_t conn_handle) const;
     bool MarkSecureConnectionReady(uint16_t conn_handle);
     bool PeerIsBonded(uint16_t conn_handle) const;
+    bool ClearStoredBondsForPairing();
     void KeepOnlyPeerBond(uint16_t conn_handle);
     void ClearConnectionState();
     void HandleCommandFrame(const std::vector<uint8_t>& frame);

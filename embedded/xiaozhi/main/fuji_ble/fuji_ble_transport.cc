@@ -272,6 +272,15 @@ bool FujiBleTransport::EnterPairingMode() {
             rejecting_existing_bond_.store(PeerIsBonded(connection_handle));
             ble_gap_terminate(connection_handle, BLE_ERR_REM_USER_CONN_TERM);
         } else {
+            if (!ClearStoredBondsForPairing()) {
+                pairing_mode_.store(false);
+                esp_timer_stop(pairing_timer_);
+                if (callbacks_.on_pairing_window_changed) {
+                    callbacks_.on_pairing_window_changed(false);
+                }
+                StartAdvertising();
+                return false;
+            }
             StartAdvertising();
         }
     }
@@ -429,7 +438,18 @@ int FujiBleTransport::HandleGapEvent(ble_gap_event* event) {
         case BLE_GAP_EVENT_DISCONNECT:
             ESP_LOGW(kTag, "disconnected reason=%d", event->disconnect.reason);
             metrics_.reconnect_count.fetch_add(1);
-            ClearConnectionState();
+            {
+                const bool replace_bond =
+                    pairing_mode_.load() && rejecting_existing_bond_.load();
+                ClearConnectionState();
+                if (replace_bond && !ClearStoredBondsForPairing()) {
+                    pairing_mode_.store(false);
+                    esp_timer_stop(pairing_timer_);
+                    if (callbacks_.on_pairing_window_changed) {
+                        callbacks_.on_pairing_window_changed(false);
+                    }
+                }
+            }
             if (callbacks_.on_disconnect) {
                 callbacks_.on_disconnect();
             }
@@ -617,6 +637,28 @@ bool FujiBleTransport::PeerIsBonded(uint16_t conn_handle) const {
     return std::any_of(peers.begin(), peers.begin() + count, [&](const ble_addr_t& peer) {
         return SameAddress(peer, description.peer_id_addr);
     });
+}
+
+bool FujiBleTransport::ClearStoredBondsForPairing() {
+    int bond_count = 0;
+    const int count_result = ble_store_util_count(BLE_STORE_OBJ_TYPE_PEER_SEC, &bond_count);
+    if (count_result != 0) {
+        ESP_LOGE(kTag, "failed to count bonds before replacement pairing: %d", count_result);
+        return false;
+    }
+    if (bond_count == 0) {
+        rejecting_existing_bond_.store(false);
+        return true;
+    }
+    const int clear_result = ble_store_clear();
+    if (clear_result != 0) {
+        ESP_LOGE(kTag, "failed to clear %d bond(s) for replacement pairing: %d", bond_count,
+                 clear_result);
+        return false;
+    }
+    rejecting_existing_bond_.store(false);
+    ESP_LOGW(kTag, "cleared %d bond(s) for physical replacement pairing", bond_count);
+    return true;
 }
 
 void FujiBleTransport::KeepOnlyPeerBond(uint16_t conn_handle) {

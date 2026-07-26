@@ -417,10 +417,23 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertIn("MarkSecureConnectionReady(event->connect.conn_handle)", transport)
         self.assertIn("MarkSecureConnectionReady(event->enc_change.conn_handle)", transport)
         self.assertIn("KeepOnlyPeerBond(conn_handle)", transport)
-        self.assertIn("pairing_mode_.load() && peer_is_bonded", transport)
-        self.assertIn("holding existing bonded peer while pairing for a new phone", transport)
-        self.assertIn("rejecting_existing_bond_.store(pairing_mode_.load() && peer_is_bonded)", transport)
-        self.assertIn("ignoring encryption from existing bond during replacement pairing", transport)
+        clear_bonds = transport.split(
+            "bool FujiBleTransport::ClearStoredBondsForPairing()", maxsplit=1
+        )[1].split("void FujiBleTransport::KeepOnlyPeerBond", maxsplit=1)[0]
+        self.assertIn("ble_store_clear()", clear_bonds)
+        enter_pairing = transport.split(
+            "bool FujiBleTransport::EnterPairingMode()", maxsplit=1
+        )[1].split("bool FujiBleTransport::ConfirmPendingComparison", maxsplit=1)[0]
+        self.assertIn("if (!ClearStoredBondsForPairing())", enter_pairing)
+        self.assertIn("pairing_mode_.store(false);", enter_pairing)
+        self.assertIn("StartAdvertising();", enter_pairing)
+        self.assertIn("return false;", enter_pairing)
+        disconnect = transport.split("case BLE_GAP_EVENT_DISCONNECT:", maxsplit=1)[1].split(
+            "case BLE_GAP_EVENT_ADV_COMPLETE", maxsplit=1
+        )[0]
+        self.assertIn("pairing_mode_.load() && rejecting_existing_bond_.load()", disconnect)
+        self.assertIn("replace_bond && !ClearStoredBondsForPairing()", disconnect)
+        self.assertIn("pairing_mode_.store(false);", disconnect)
         self.assertIn("ble_store_util_delete_peer(&peers[index])", transport)
         pump = transport.split("void FujiBleTransport::PumpOutgoing()", maxsplit=1)[1].split(
             "void FujiBleTransport::HandleTxComplete", maxsplit=1
