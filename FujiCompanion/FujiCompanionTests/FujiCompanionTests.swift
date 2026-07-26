@@ -6,58 +6,164 @@ import Testing
 @MainActor
 struct FujiProtocolTests {
     @Test("JSON 往返保留版本化信封")
-    func envelopeRoundTrip() throws {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let original = FujiEnvelope.foodSearch(
+    func messageRoundTrip() throws {
+        let original = FujiMessage.foodSearch(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
-            now: now
+            criteria: .init(radiusM: 1_500, budgetRMB: 80, avoidTerms: ["花生"])
         )
 
         let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(FujiEnvelope.self, from: data)
+        let decoded = try JSONDecoder().decode(FujiMessage.self, from: data)
 
         #expect(decoded == original)
-        #expect(decoded.version == FujiEnvelope.supportedVersion)
+        #expect(decoded.version == FujiMessage.supportedVersion)
     }
 
-    @Test("拒绝重复请求")
-    func duplicateRequest() throws {
-        let validator = FujiEnvelopeValidator()
-        let envelope = FujiEnvelope.foodSearch()
+    @Test("message_id 去重采用有界 TTL/LRU")
+    func duplicateMessageAndEviction() throws {
+        let validator = FujiMessageValidator(capacity: 2)
+        let first = FujiMessage.foodSearch()
 
-        try validator.validate(envelope)
-        #expect(throws: FujiEnvelopeValidationError.duplicate) {
-            try validator.validate(envelope)
+        _ = try validator.validate(first, receivedAtMS: 1_000)
+        #expect(throws: FujiMessageValidationError.protocolError(.duplicate)) {
+            try validator.validate(first, receivedAtMS: 1_001)
         }
+        _ = try validator.validate(.foodSearch(), receivedAtMS: 1_002)
+        _ = try validator.validate(.foodSearch(), receivedAtMS: 1_003)
+        _ = try validator.validate(first, receivedAtMS: 1_004)
     }
 
-    @Test("拒绝过期请求")
-    func expiredRequest() {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let envelope = FujiEnvelope.foodSearch(now: now, lifetime: -1)
+    @Test("TTL 从接收单调时钟开始")
+    func monotonicExpiry() throws {
+        let message = FujiMessage.foodSearch(ttlMS: 5_000)
+        let received = try FujiMessageValidator().validate(message, receivedAtMS: 10_000)
 
-        #expect(throws: FujiEnvelopeValidationError.expired) {
-            try FujiEnvelopeValidator().validate(envelope, now: now)
-        }
+        #expect(!received.isExpired(at: 14_999))
+        #expect(received.isExpired(at: 15_000))
     }
 
     @Test("拒绝不支持的协议版本")
     func unsupportedVersion() {
-        let envelope = FujiEnvelope(
+        let message = FujiMessage(
             version: 99,
             requestID: UUID(),
-            intent: .foodSearch,
-            state: .clarifying,
-            parameters: [:],
-            requiresConfirmation: false,
-            createdAt: .now,
-            expiresAt: .now.addingTimeInterval(60)
+            direction: .deviceToPhone,
+            type: .actionRequest,
+            ttlMS: 30_000,
+            payload: .actionRequest(.foodSearch(criteria: .init()))
         )
 
-        #expect(throws: FujiEnvelopeValidationError.unsupportedVersion(99)) {
-            try FujiEnvelopeValidator().validate(envelope)
+        #expect(throws: FujiMessageValidationError.protocolError(.unsupportedVersion)) {
+            try FujiMessageValidator().validate(message, receivedAtMS: 0)
         }
     }
+
+    @Test("Swift 校验全部共享 golden fixtures")
+    func goldenFixtures() throws {
+        let root = fixtureRoot
+        let manifest = try JSONDecoder().decode(
+            FixtureManifest.self,
+            from: Data(contentsOf: root.appending(path: "manifest.json"))
+        )
+        let validator = FujiMessageValidator()
+        var clock: UInt64 = 1_000
+
+        for path in manifest.valid {
+            let data = try Data(contentsOf: root.appending(path: path))
+            _ = try validator.decode(data, receivedAtMS: clock)
+            clock += 1
+        }
+        for fixture in manifest.invalid {
+            let data = try Data(contentsOf: root.appending(path: fixture.path))
+            #expect(throws: FujiMessageValidationError.protocolError(fixture.error)) {
+                try validator.decode(data, receivedAtMS: clock)
+            }
+            clock += 1
+        }
+    }
+
+    @Test("MTU 23、185、517 都可分片并乱序重组")
+    func fragmentationAcrossMTUs() throws {
+        let data = try JSONEncoder().encode(FujiMessage.foodSearch(criteria: .init(avoidTerms: [String(repeating: "x", count: 40)])))
+
+        for mtu in [23, 185, 517] {
+            let frames = try FujiFramer.frames(for: data, mtu: mtu, transferID: UInt32(mtu))
+            var assembler = FujiFrameAssembler()
+            var result: Data?
+            let reordered = [frames[0]] + Array(frames.dropFirst().reversed())
+            for frame in reordered {
+                if let complete = try assembler.accept(frame, nowMS: 1_000) {
+                    result = complete
+                }
+            }
+            #expect(result == data)
+        }
+    }
+
+    @Test("缺片在五秒后清理")
+    func missingFragmentTimesOut() throws {
+        let data = Data(repeating: 0x41, count: 400)
+        let frames = try FujiFramer.frames(for: data, mtu: 185, transferID: 42)
+        var assembler = FujiFrameAssembler()
+
+        _ = try assembler.accept(frames[0], nowMS: 100)
+        #expect(throws: FujiFrameError.timedOut) {
+            try assembler.accept(frames[1], nowMS: 5_100)
+        }
+    }
+
+    @Test("重复分片与并发 transfer 被拒绝")
+    func duplicateAndCollidingFragments() throws {
+        let data = Data(repeating: 0x42, count: 400)
+        let first = try FujiFramer.frames(for: data, mtu: 185, transferID: 1)
+        let second = try FujiFramer.frames(for: data, mtu: 185, transferID: 2)
+        var assembler = FujiFrameAssembler()
+
+        _ = try assembler.accept(first[0], nowMS: 100)
+        #expect(throws: FujiFrameError.inconsistentTransfer) {
+            try assembler.accept(first[0], nowMS: 101)
+        }
+        assembler.reset()
+        _ = try assembler.accept(first[0], nowMS: 102)
+        #expect(throws: FujiFrameError.transferInProgress) {
+            try assembler.accept(second[0], nowMS: 103)
+        }
+    }
+
+    @Test("已执行动作缓存有界且重复命中原结果")
+    func actionResultCache() {
+        let cache = FujiActionResultCache(capacity: 2)
+        let requestID = UUID()
+        let original = FujiActionResultPayload(
+            action: .startNavigation,
+            status: .succeeded,
+            navigationState: .launched
+        )
+
+        cache.store(original, for: requestID, nowMS: 100)
+        #expect(cache.result(for: requestID, nowMS: 101) == original)
+        cache.store(.init(action: .foodSearch, status: .failed), for: UUID(), nowMS: 102)
+        cache.store(.init(action: .foodSearch, status: .cancelled), for: UUID(), nowMS: 103)
+        #expect(cache.result(for: requestID, nowMS: 104) == nil)
+    }
+
+    private var fixtureRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "Shared/FujiProtocolV1/fixtures", directoryHint: .isDirectory)
+    }
+}
+
+private struct FixtureManifest: Decodable {
+    struct InvalidFixture: Decodable {
+        let path: String
+        let error: FujiProtocolErrorCode
+    }
+
+    let valid: [String]
+    let invalid: [InvalidFixture]
 }
 
 @Suite("餐馆排序")

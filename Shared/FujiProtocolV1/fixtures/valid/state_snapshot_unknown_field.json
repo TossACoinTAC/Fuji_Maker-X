@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "message_id": "10000000-0000-4000-8000-000000000006",
+  "direction": "device_to_phone",
+  "type": "state_snapshot",
+  "ttl_ms": 30000,
+  "payload": {
+    "device_state": "idle",
+    "earphones_verified": false,
+    "firmware_version": "1.0.0-dev",
+    "capabilities": ["food_search", "start_navigation"],
+    "future_optional_field": "ignored by v1"
+  },
+  "future_log_field": 42
+}

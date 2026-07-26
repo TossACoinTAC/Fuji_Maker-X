@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "message_id": "10000000-0000-4000-8000-000000000007",
+  "request_id": "20000000-0000-4000-8000-000000000001",
+  "direction": "device_to_phone",
+  "type": "cancel",
+  "ttl_ms": 10000,
+  "payload": {
+    "target_request_id": "20000000-0000-4000-8000-000000000001",
+    "reason": "用户取消"
+  }
+}

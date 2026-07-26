@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "message_id": "10000000-0000-4000-8000-000000000002",
+  "request_id": "20000000-0000-4000-8000-000000000001",
+  "direction": "device_to_phone",
+  "type": "action_request",
+  "ttl_ms": 120000,
+  "payload": {
+    "action": "food_search",
+    "criteria": {
+      "radius_m": 1500,
+      "budget_rmb": 80,
+      "avoid_terms": ["花生"]
+    }
+  }
+}

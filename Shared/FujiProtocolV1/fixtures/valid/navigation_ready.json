@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "message_id": "10000000-0000-4000-8000-000000000005",
+  "request_id": "20000000-0000-4000-8000-000000000002",
+  "direction": "phone_to_device",
+  "type": "action_result",
+  "ttl_ms": 30000,
+  "payload": {
+    "action": "start_navigation",
+    "status": "succeeded",
+    "navigation_state": "navigation_ready",
+    "message": "路线已准备，等待用户解锁后打开地图"
+  }
+}

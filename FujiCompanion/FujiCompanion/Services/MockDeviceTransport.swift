@@ -3,15 +3,15 @@ import Foundation
 @MainActor
 final class MockDeviceTransport: DeviceTransport {
     private(set) var connectionState: DeviceConnectionState = .disconnected
-    let messages: AsyncStream<FujiEnvelope>
-    private let continuation: AsyncStream<FujiEnvelope>.Continuation
-    private(set) var sentMessages: [FujiEnvelope] = []
+    let events: AsyncStream<DeviceTransportEvent>
+    private let continuation: AsyncStream<DeviceTransportEvent>.Continuation
+    private(set) var sentMessages: [FujiMessage] = []
     private let connectsSuccessfully: Bool
 
     init(connectsSuccessfully: Bool = true) {
         self.connectsSuccessfully = connectsSuccessfully
-        var capturedContinuation: AsyncStream<FujiEnvelope>.Continuation?
-        messages = AsyncStream { continuation in
+        var capturedContinuation: AsyncStream<DeviceTransportEvent>.Continuation?
+        events = AsyncStream { continuation in
             capturedContinuation = continuation
         }
         continuation = capturedContinuation!
@@ -19,23 +19,31 @@ final class MockDeviceTransport: DeviceTransport {
 
     func connect() {
         connectionState = .connecting
+        continuation.yield(.connectionChanged(.connecting))
         connectionState = connectsSuccessfully ? .connected : .disconnected
+        continuation.yield(.connectionChanged(connectionState))
     }
 
     func disconnect() {
         connectionState = .disconnected
+        continuation.yield(.connectionChanged(.disconnected))
     }
 
-    func send(_ envelope: FujiEnvelope) async throws {
+    func send(_ message: FujiMessage) async throws {
         guard connectionState == .connected else {
             throw MockTransportError.disconnected
         }
-        sentMessages.append(envelope)
+        sentMessages.append(message)
     }
 
-    func simulateFoodRequest(now: Date = .now) {
+    func simulateFoodRequest() {
         guard connectionState == .connected else { return }
-        continuation.yield(.foodSearch(now: now))
+        continuation.yield(.message(.foodSearch()))
+    }
+
+    func simulateSnapshot(_ snapshot: FujiStateSnapshotPayload) {
+        guard connectionState == .connected else { return }
+        continuation.yield(.stateSnapshot(snapshot))
     }
 }
 

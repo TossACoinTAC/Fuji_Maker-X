@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuji.local/schema/device-phone-v1.json",
+  "title": "Fuji device/phone protocol v1",
+  "type": "object",
+  "required": ["version", "message_id", "direction", "type", "ttl_ms", "payload"],
+  "properties": {
+    "version": { "const": 1 },
+    "message_id": { "$ref": "#/$defs/uuid" },
+    "request_id": { "$ref": "#/$defs/uuid" },
+    "direction": { "enum": ["device_to_phone", "phone_to_device"] },
+    "type": { "enum": ["capability_report", "action_request", "action_result", "cancel", "state_snapshot", "protocol_error"] },
+    "ttl_ms": { "type": "integer", "minimum": 1, "maximum": 120000 },
+    "sent_at_utc": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "capability_report" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/capability" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "action_request" } }, "required": ["type"] },
+      "then": {
+        "required": ["request_id"],
+        "properties": {
+          "direction": { "const": "device_to_phone" },
+          "payload": { "$ref": "#/$defs/actionRequest" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "action_result" } }, "required": ["type"] },
+      "then": {
+        "required": ["request_id"],
+        "properties": {
+          "direction": { "const": "phone_to_device" },
+          "payload": { "$ref": "#/$defs/actionResult" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "cancel" } }, "required": ["type"] },
+      "then": { "required": ["request_id"], "properties": { "payload": { "$ref": "#/$defs/cancel" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "state_snapshot" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "direction": { "const": "device_to_phone" },
+          "payload": { "$ref": "#/$defs/stateSnapshot" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "protocol_error" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/protocolError" } } }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "action": { "enum": ["food_search", "start_navigation"] },
+    "status": { "enum": ["accepted", "in_progress", "needs_confirmation", "succeeded", "failed", "cancelled", "expired"] },
+    "errorCode": {
+      "enum": ["invalid_json", "unsupported_version", "unknown_type", "invalid_payload", "payload_too_large", "fragment_error", "duplicate", "expired", "cancelled", "disconnected", "bluetooth_unauthorized", "location_permission_denied", "location_unavailable", "no_results", "private_route_unavailable", "route_lost", "foreground_required", "map_launch_failed", "internal_error"]
+    },
+    "capability": {
+      "type": "object",
+      "required": ["protocol_versions", "firmware_version", "build_id", "max_payload_bytes", "capabilities"],
+      "properties": {
+        "protocol_versions": { "type": "array", "minItems": 1, "items": { "type": "integer" } },
+        "firmware_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "build_id": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "max_payload_bytes": { "const": 8192 },
+        "capabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 64 } }
+      }
+    },
+    "criteria": {
+      "type": "object",
+      "properties": {
+        "radius_m": { "type": "integer", "minimum": 100, "maximum": 5000 },
+        "budget_rmb": { "type": "integer", "minimum": 1, "maximum": 2000 },
+        "avoid_terms": { "type": "array", "maxItems": 8, "items": { "type": "string", "minLength": 1, "maxLength": 40 } }
+      }
+    },
+    "actionRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["action", "criteria"],
+          "properties": {
+            "action": { "const": "food_search" },
+            "criteria": { "$ref": "#/$defs/criteria" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["action", "candidate_id", "confirmation", "parent_request_id"],
+          "properties": {
+            "action": { "const": "start_navigation" },
+            "candidate_id": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "confirmation": { "const": "confirmed" },
+            "parent_request_id": { "$ref": "#/$defs/uuid" }
+          }
+        }
+      ]
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["candidate_id", "name", "reason"],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    },
+    "actionResult": {
+      "type": "object",
+      "required": ["action", "status"],
+      "properties": {
+        "action": { "$ref": "#/$defs/action" },
+        "status": { "$ref": "#/$defs/status" },
+        "candidates": { "type": "array", "maxItems": 3, "items": { "$ref": "#/$defs/candidate" } },
+        "navigation_state": { "enum": ["navigation_ready", "navigation_launched"] },
+        "error_code": { "$ref": "#/$defs/errorCode" },
+        "message": { "type": "string", "maxLength": 240 }
+      }
+    },
+    "cancel": {
+      "type": "object",
+      "required": ["target_request_id"],
+      "properties": {
+        "target_request_id": { "$ref": "#/$defs/uuid" },
+        "reason": { "type": "string", "maxLength": 160 }
+      }
+    },
+    "stateSnapshot": {
+      "type": "object",
+      "required": ["device_state", "earphones_verified", "firmware_version", "capabilities"],
+      "properties": {
+        "device_state": { "enum": ["idle", "listening", "thinking", "speaking", "success", "error", "offline", "muted"] },
+        "active_request_id": { "$ref": "#/$defs/uuid" },
+        "earphones_verified": { "type": "boolean" },
+        "firmware_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "capabilities": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 64 } }
+      }
+    },
+    "protocolError": {
+      "type": "object",
+      "required": ["error_code", "message"],
+      "properties": {
+        "error_code": { "$ref": "#/$defs/errorCode" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 240 }
+      }
+    }
+  }
+}

@@ -29,6 +29,7 @@ set(SOURCES "audio/audio_codec.cc"
             "display/lvgl_display/jpg/image_to_jpeg.cpp"
             "display/lvgl_display/jpg/jpeg_to_image.c"
             "protocols/protocol.cc"
+            "fuji_protocol/fuji_protocol.cc"
             "protocols/text_glyph_payload.cc"
             "protocols/mqtt_protocol.cc"
             "protocols/websocket_protocol.cc"
@@ -42,7 +43,7 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols")
+set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "fuji_protocol")
 
 # Add board common files
 list(APPEND SOURCES
