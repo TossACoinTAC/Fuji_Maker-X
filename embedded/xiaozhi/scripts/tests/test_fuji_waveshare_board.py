@@ -247,7 +247,25 @@ class FujiWaveshareBoardTests(unittest.TestCase):
 
         self.assertIn("boards/fuji-waveshare-1p46/assets", cmake)
         self.assertIn("MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT", controller)
-        self.assertIn("kFramePeriodMs = 83", (BOARD_DIR / "fuji_expression_controller.h").read_text(encoding="utf-8"))
+        expression_header = (BOARD_DIR / "fuji_expression_controller.h").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("kFramePeriodMs = 83", expression_header)
+        self.assertIn("PrewarmCoreAssets();", controller)
+        self.assertIn("lv_refr_now(nullptr)", controller)
+        self.assertIn("esp_timer_get_time()", controller)
+        self.assertIn("kMetricsPeriodUs", expression_header)
+        self.assertNotIn("kMetricsPeriodTicks", expression_header)
+        self.assertIn("warm_baseline", controller)
+        set_hint = controller.split(
+            "void FujiExpressionController::SetServerEmotionHint", maxsplit=1
+        )[1].split("void FujiExpressionController::SetScreenEnabled", maxsplit=1)[0]
+        self.assertIn("hint_.store", set_hint)
+        self.assertNotIn("Tick(", set_hint)
+        set_emotion = display.split(
+            "void SetEmotion(const char* emotion) override", maxsplit=1
+        )[1].split("void SetPowerSaveMode", maxsplit=1)[0]
+        self.assertNotIn("DisplayLockGuard", set_emotion)
         self.assertLess(policy.index("!inputs.screen_enabled"), policy.index("inputs.fatal_error"))
         self.assertLess(policy.index("inputs.fatal_error"), policy.index("inputs.offline"))
         self.assertLess(policy.index("inputs.offline"), policy.index("inputs.muted"))

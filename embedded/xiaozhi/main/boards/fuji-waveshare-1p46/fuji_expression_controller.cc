@@ -9,8 +9,9 @@
 #include "display/lvgl_display/lvgl_image.h"
 #include "wifi_manager.h"
 
-#include <esp_log.h>
 #include <esp_heap_caps.h>
+#include <esp_log.h>
+#include <esp_timer.h>
 
 #include <array>
 #include <cstring>
@@ -69,6 +70,8 @@ FujiExpressionController::FujiExpressionController(lv_obj_t* parent) {
     lv_obj_add_flag(asset_image_, LV_OBJ_FLAG_HIDDEN);
 
     LoadAssets();
+    PrewarmCoreAssets();
+    next_metrics_at_us_ = esp_timer_get_time() + kMetricsPeriodUs;
     timer_ = lv_timer_create(TimerCallback, kFramePeriodMs, this);
     Tick(true);
 }
@@ -86,10 +89,8 @@ void FujiExpressionController::HeapDeleter::operator()(uint8_t* data) const {
 }
 
 void FujiExpressionController::SetServerEmotionHint(const char* emotion) {
-    hint_ = FujiExpressionHintFromName(emotion != nullptr ? emotion : "neutral");
-    if (screen_enabled_) {
-        Tick(true);
-    }
+    hint_.store(FujiExpressionHintFromName(emotion != nullptr ? emotion : "neutral"),
+                std::memory_order_relaxed);
 }
 
 void FujiExpressionController::SetScreenEnabled(bool enabled) {
@@ -209,7 +210,7 @@ FujiExpressionInputs FujiExpressionController::ReadInputs() const {
         .offline = wifi.IsInitialized() && !wifi.IsConnected() && !connecting_wifi,
         .muted = codec != nullptr && codec->output_volume() == 0,
         .activity = MapActivity(state),
-        .hint = hint_,
+        .hint = hint_.load(std::memory_order_relaxed),
     };
 }
 
@@ -280,6 +281,35 @@ void FujiExpressionController::LoadAsset(FujiExpression expression) {
     assets_[ExpressionIndex(expression)] = std::move(asset);
 }
 
+void FujiExpressionController::PrewarmCoreAssets() {
+    static constexpr std::array<FujiExpression, 5> kCoreStates = {
+        FujiExpression::kConnecting,
+        FujiExpression::kThinking,
+        FujiExpression::kListening,
+        FujiExpression::kSpeaking,
+        FujiExpression::kIdle,
+    };
+
+    const int64_t started_at_us = esp_timer_get_time();
+    size_t warmed = 0;
+    for (FujiExpression expression : kCoreStates) {
+        auto& asset = assets_[ExpressionIndex(expression)];
+        if (asset.image == nullptr || asset.is_gif) {
+            continue;
+        }
+        lv_image_set_src(asset_image_, asset.image->image_dsc());
+        SetFallbackVisible(false);
+        lv_obj_remove_flag(asset_image_, LV_OBJ_FLAG_HIDDEN);
+        lv_refr_now(nullptr);
+        ++warmed;
+    }
+    lv_obj_add_flag(asset_image_, LV_OBJ_FLAG_HIDDEN);
+    SetFallbackVisible(true);
+
+    ESP_LOGI(TAG, "prewarmed %u core PNG assets in %lld ms", static_cast<unsigned>(warmed),
+             (esp_timer_get_time() - started_at_us) / 1000);
+}
+
 void FujiExpressionController::Tick(bool force) {
     const FujiExpression next = ResolveFujiExpression(ReadInputs());
     if (force || next != current_) {
@@ -287,6 +317,14 @@ void FujiExpressionController::Tick(bool force) {
     }
     if (next != FujiExpression::kPaused) {
         AnimateFrame();
+    }
+    const int64_t now_us = esp_timer_get_time();
+    if (now_us >= next_metrics_at_us_) {
+        const int64_t elapsed_periods =
+            1 + (now_us - next_metrics_at_us_) / kMetricsPeriodUs;
+        uptime_minutes_ = static_cast<uint16_t>(uptime_minutes_ + elapsed_periods);
+        next_metrics_at_us_ += elapsed_periods * kMetricsPeriodUs;
+        LogMemoryMetrics();
     }
 }
 
@@ -467,4 +505,31 @@ void FujiExpressionController::SetFallbackVisible(bool visible) {
             lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
         }
     }
+}
+
+void FujiExpressionController::LogMemoryMetrics() {
+    const size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    const bool warm_baseline = warm_internal_free_ == 0 && uptime_minutes_ >= 5;
+    if (warm_baseline) {
+        warm_internal_free_ = internal_free;
+        warm_psram_free_ = psram_free;
+    }
+
+    const int32_t internal_drift =
+        warm_internal_free_ == 0
+            ? 0
+            : static_cast<int32_t>(static_cast<int64_t>(warm_internal_free_) -
+                                   static_cast<int64_t>(internal_free));
+    const int32_t psram_drift =
+        warm_psram_free_ == 0
+            ? 0
+            : static_cast<int32_t>(static_cast<int64_t>(warm_psram_free_) -
+                                   static_cast<int64_t>(psram_free));
+    ESP_LOGI(TAG,
+             "memory minute=%u internal_free=%u psram_free=%u drift_internal=%d "
+             "drift_psram=%d%s",
+             static_cast<unsigned>(uptime_minutes_), static_cast<unsigned>(internal_free),
+             static_cast<unsigned>(psram_free), static_cast<int>(internal_drift),
+             static_cast<int>(psram_drift), warm_baseline ? " warm_baseline" : "");
 }

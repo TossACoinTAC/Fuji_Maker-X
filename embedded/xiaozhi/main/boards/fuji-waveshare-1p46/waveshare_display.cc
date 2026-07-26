@@ -56,7 +56,6 @@ public:
             SpiLcdDisplay::SetEmotion(emotion);
             return;
         }
-        DisplayLockGuard lock(this);
         expression_->SetServerEmotionHint(emotion);
     }
 

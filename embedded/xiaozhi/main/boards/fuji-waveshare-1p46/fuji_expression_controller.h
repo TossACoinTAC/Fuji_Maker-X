@@ -5,6 +5,7 @@
 #include <lvgl.h>
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -32,6 +33,7 @@ private:
     };
 
     static constexpr uint32_t kFramePeriodMs = 83;
+    static constexpr int64_t kMetricsPeriodUs = 60LL * 1000 * 1000;
 
     static void TimerCallback(lv_timer_t* timer);
     static FujiExpressionActivity MapActivity(int device_state);
@@ -42,12 +44,14 @@ private:
     FujiExpressionInputs ReadInputs() const;
     void LoadAssets();
     void LoadAsset(FujiExpression expression);
+    void PrewarmCoreAssets();
     void Tick(bool force = false);
     void ApplyState(FujiExpression expression);
     void ApplyFallback(FujiExpression expression);
     void AnimateFrame();
     void StopAnimation();
     void SetFallbackVisible(bool visible);
+    void LogMemoryMetrics();
 
     lv_obj_t* root_ = nullptr;
     lv_obj_t* face_ = nullptr;
@@ -61,8 +65,12 @@ private:
     std::array<Asset, static_cast<size_t>(FujiExpression::kCount)> assets_{};
     std::unique_ptr<LvglGif> gif_;
     FujiExpression current_ = FujiExpression::kCount;
-    FujiExpression hint_ = FujiExpression::kIdle;
+    std::atomic<FujiExpression> hint_{FujiExpression::kIdle};
     bool screen_enabled_ = true;
     bool using_asset_ = false;
     uint8_t frame_ = 0;
+    uint16_t uptime_minutes_ = 0;
+    int64_t next_metrics_at_us_ = 0;
+    size_t warm_internal_free_ = 0;
+    size_t warm_psram_free_ = 0;
 };
