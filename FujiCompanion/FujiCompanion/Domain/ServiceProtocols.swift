@@ -14,14 +14,20 @@ enum DeviceConnectionState: String, Equatable {
     }
 }
 
+enum DeviceTransportEvent: Equatable {
+    case connectionChanged(DeviceConnectionState)
+    case message(FujiMessage)
+    case stateSnapshot(FujiStateSnapshotPayload)
+}
+
 @MainActor
 protocol DeviceTransport: AnyObject {
     var connectionState: DeviceConnectionState { get }
-    var messages: AsyncStream<FujiEnvelope> { get }
+    var events: AsyncStream<DeviceTransportEvent> { get }
 
     func connect()
     func disconnect()
-    func send(_ envelope: FujiEnvelope) async throws
+    func send(_ message: FujiMessage) async throws
 }
 
 @MainActor

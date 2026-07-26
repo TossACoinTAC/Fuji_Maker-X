@@ -66,7 +66,7 @@ final class FujiAppModel {
     private let restaurantSearch: RestaurantSearching
     private let navigationLauncher: NavigationLaunching
     private let speechOutput: SpeechOutput
-    private let validator = FujiEnvelopeValidator()
+    private let validator = FujiMessageValidator()
     private var messageTask: Task<Void, Never>?
     private var started = false
 
@@ -92,10 +92,10 @@ final class FujiAppModel {
         deviceState = connectionState == .connected ? .idle : .disconnected
         record("演示设备已连接", detail: "业务层通过 DeviceTransport 接收请求", kind: .device)
 
-        messageTask = Task { [weak self, messages = transport.messages] in
-            for await envelope in messages {
+        messageTask = Task { [weak self, events = transport.events] in
+            for await event in events {
                 guard let self else { return }
-                self.handle(envelope)
+                self.handle(event)
             }
         }
     }
@@ -191,10 +191,15 @@ final class FujiAppModel {
         )
 
         if let requestID = activeRequestID {
-            let response = FujiEnvelope.navigationResult(
+            let response = FujiMessage.actionResult(
                 requestID: requestID,
-                restaurantName: recommendation.restaurant.name,
-                succeeded: outcome.succeeded
+                result: FujiActionResultPayload(
+                    action: .startNavigation,
+                    status: outcome.succeeded ? .succeeded : .failed,
+                    navigationState: outcome.succeeded ? .launched : nil,
+                    errorCode: outcome.succeeded ? nil : .mapLaunchFailed,
+                    message: outcome.message
+                )
             )
             try? await transport.send(response)
         }
@@ -248,12 +253,34 @@ final class FujiAppModel {
         presentedError = nil
     }
 
-    private func handle(_ envelope: FujiEnvelope) {
+    private func handle(_ event: DeviceTransportEvent) {
+        switch event {
+        case .connectionChanged(let state):
+            connectionState = state
+            if state == .disconnected {
+                deviceState = .disconnected
+                validator.reset()
+                activeRequestID = nil
+            } else if state == .connected, deviceState == .disconnected {
+                deviceState = .idle
+            }
+        case .stateSnapshot(let snapshot):
+            activeRequestID = snapshot.activeRequestID
+            deviceState = appState(from: snapshot.deviceState)
+        case .message(let message):
+            handle(message)
+        }
+    }
+
+    private func handle(_ message: FujiMessage) {
         do {
-            try validator.validate(envelope)
-            activeRequestID = envelope.requestID
-            switch envelope.intent {
-            case .foodSearch:
+            _ = try validator.validate(message, receivedAtMS: monotonicMilliseconds())
+            switch message.payload {
+            case .actionRequest(.foodSearch(let payload)):
+                activeRequestID = message.requestID
+                if let radius = payload.radiusM { criteria.radiusMeters = radius }
+                if let budget = payload.budgetRMB { criteria.budgetRMB = budget }
+                if let avoid = payload.avoidTerms { criteria.avoidText = avoid.joined(separator: "、") }
                 recommendations = []
                 pendingRecommendation = nil
                 flowStage = .criteria
@@ -261,14 +288,33 @@ final class FujiAppModel {
                 statusMessage = "告诉 Fuji 这次的条件"
                 selectedTab = .fuji
                 record("收到吃什么请求", detail: "请求已通过协议校验", kind: .device)
-            case .cancel:
-                deleteSessionData()
+            case .cancel(let payload):
+                if activeRequestID == payload.targetRequestID {
+                    deleteSessionData()
+                }
             default:
-                record("收到设备消息", detail: envelope.intent.rawValue, kind: .device)
+                record("收到设备消息", detail: message.type.rawValue, kind: .device)
             }
         } catch {
             show(error)
         }
+    }
+
+    private func appState(from state: FujiDeviceState) -> FujiState {
+        switch state {
+        case .idle: .idle
+        case .listening: .listening
+        case .thinking: .thinking
+        case .speaking: .acting
+        case .success: .success
+        case .error: .error
+        case .offline: .disconnected
+        case .muted: .muted
+        }
+    }
+
+    private func monotonicMilliseconds() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds / 1_000_000
     }
 
     private func recordSpeechOutcome(_ outcome: SpeechOutcome) {
