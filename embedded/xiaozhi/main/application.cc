@@ -11,13 +11,66 @@
 #include "text_glyph_payload.h"
 #include "websocket_protocol.h"
 
+#if CONFIG_FUJI_BLE_TRANSPORT
+#include "fuji_ble_transport.h"
+#endif
+
 #include <driver/gpio.h>
 #include <esp_log.h>
 #include <arpa/inet.h>
 #include <cJSON.h>
+#include <cstdio>
 #include <cstring>
 
 #define TAG "Application"
+
+#if CONFIG_FUJI_BLE_TRANSPORT
+namespace {
+
+const char* FujiSnapshotState(DeviceState state) {
+    switch (state) {
+        case kDeviceStateIdle:
+            return "idle";
+        case kDeviceStateListening:
+            return "listening";
+        case kDeviceStateConnecting:
+        case kDeviceStateStarting:
+        case kDeviceStateActivating:
+        case kDeviceStateUpgrading:
+            return "thinking";
+        case kDeviceStateSpeaking:
+            return "speaking";
+        case kDeviceStateWifiConfiguring:
+            return "offline";
+        case kDeviceStateFatalError:
+            return "error";
+        case kDeviceStateUnknown:
+        case kDeviceStateAudioTesting:
+        default:
+            return "idle";
+    }
+}
+
+const char* FujiMessageTypeName(fuji::protocol::MessageType type) {
+    switch (type) {
+        case fuji::protocol::MessageType::kCapabilityReport:
+            return "capability_report";
+        case fuji::protocol::MessageType::kActionRequest:
+            return "action_request";
+        case fuji::protocol::MessageType::kActionResult:
+            return "action_result";
+        case fuji::protocol::MessageType::kCancel:
+            return "cancel";
+        case fuji::protocol::MessageType::kStateSnapshot:
+            return "state_snapshot";
+        case fuji::protocol::MessageType::kProtocolError:
+            return "protocol_error";
+    }
+    return "unknown";
+}
+
+}  // namespace
+#endif
 
 Application::Application() {
     event_group_ = xEventGroupCreate();
@@ -92,7 +145,52 @@ void Application::Initialize() {
     // Add state change listeners
     state_machine_.AddStateChangeListener([this](DeviceState old_state, DeviceState new_state) {
         xEventGroupSetBits(event_group_, MAIN_EVENT_STATE_CHANGED);
+#if CONFIG_FUJI_BLE_TRANSPORT
+        fuji::ble::FujiBleTransport::GetInstance().PublishStateSnapshot();
+#endif
     });
+
+#if CONFIG_FUJI_BLE_TRANSPORT
+    auto& fuji_ble = fuji::ble::FujiBleTransport::GetInstance();
+    fuji::ble::FujiBleTransport::Callbacks ble_callbacks;
+    ble_callbacks.make_state_snapshot = [this]() {
+        return fuji::ble::FujiBleTransport::GetInstance().MakeStateSnapshot(
+            FujiSnapshotState(GetDeviceState()));
+    };
+    ble_callbacks.on_message = [this](const fuji::ble::ReceivedMessage& received) {
+        Schedule([received]() {
+            ESP_LOGI(TAG, "Fuji phone message type=%s request=%s",
+                     FujiMessageTypeName(received.message.type),
+                     received.message.request_id.value_or("none").c_str());
+        });
+    };
+    ble_callbacks.on_disconnect = [this]() {
+        Schedule([]() {
+            ESP_LOGW(TAG, "Fuji phone disconnected; volatile phone state cleared");
+            fuji::ble::FujiBleTransport::GetInstance().PublishStateSnapshot();
+        });
+    };
+    ble_callbacks.on_pairing_window_changed = [this](bool open) {
+        Schedule([open]() {
+            auto* display = Board::GetInstance().GetDisplay();
+            display->ShowNotification(open ? "BLE PAIRING" : "BLE PAIRING CLOSED",
+                                      open ? 120000 : 3000);
+        });
+    };
+    ble_callbacks.on_numeric_comparison = [this](uint32_t number) {
+        Schedule([number]() {
+            char prompt[48] = {};
+            std::snprintf(prompt, sizeof(prompt), "PAIR %06lu - PRESS BOOT",
+                          static_cast<unsigned long>(number));
+            Board::GetInstance().GetDisplay()->ShowNotification(prompt, 120000);
+        });
+    };
+    if (!fuji_ble.Start(std::move(ble_callbacks))) {
+        ESP_LOGE(TAG, "Fuji BLE transport failed to start");
+    } else {
+        fuji_ble.PublishStateSnapshot();
+    }
+#endif
 
     // Start the clock timer to update the status bar
     esp_timer_start_periodic(clock_timer_handle_, 1000000);

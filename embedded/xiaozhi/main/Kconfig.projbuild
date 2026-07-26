@@ -640,6 +640,16 @@ config BOARD_SPEAKER_TEST_ONLY
         low-amplitude prompt and speech sample. The microphone data pin is
         unused. No button, Wi-Fi or normal application is initialized.
 
+config FUJI_BLE_TRANSPORT
+    bool "Fuji encrypted device-phone BLE transport"
+    default n
+    depends on BOARD_TYPE_FUJI_WAVESHARE_1P46 && !BOARD_PROBE_ONLY && !BOARD_DISPLAY_TEST_ONLY && !BOARD_MIC_TEST_ONLY && !BOARD_SPEAKER_TEST_ONLY
+    help
+        Enable the project-private Fuji protocol v1 GATT peripheral in the
+        normal firmware. The selected build variant must also enable the
+        Bluetooth controller and NimBLE host. Diagnostic builds intentionally
+        keep Bluetooth off.
+
 config BOARD_HARDWARE_SELF_TEST
     bool "Run Fuji peripheral self-test before the application"
     default n

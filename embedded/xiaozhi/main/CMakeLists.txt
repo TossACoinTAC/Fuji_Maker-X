@@ -45,6 +45,17 @@ set(SOURCES "audio/audio_codec.cc"
 
 set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "fuji_protocol")
 
+if(CONFIG_FUJI_BLE_TRANSPORT)
+    if(NOT CONFIG_BT_CONTROLLER_ENABLED OR NOT CONFIG_BT_NIMBLE_ENABLED)
+        message(FATAL_ERROR "CONFIG_FUJI_BLE_TRANSPORT requires the Bluetooth controller and NimBLE host")
+    endif()
+    list(APPEND SOURCES
+        "fuji_ble/fuji_ble_session.cc"
+        "fuji_ble/fuji_ble_transport.cc"
+    )
+    list(APPEND INCLUDE_DIRS "fuji_ble")
+endif()
+
 # Add board common files
 list(APPEND SOURCES
     "boards/common/board.cc"

@@ -326,6 +326,81 @@ class FujiWaveshareBoardTests(unittest.TestCase):
         self.assertIn("SetBargeInTransition", application)
         self.assertIn("kInterruptingDurationUs = 166 * 1000", controller_header)
 
+    def test_ble_transport_is_secure_private_and_excluded_from_diagnostics(self):
+        board_config = json.loads((BOARD_DIR / "config.json").read_text(encoding="utf-8"))
+        normal = next(
+            build for build in board_config["builds"]
+            if build["name"] == "fuji-waveshare-1p46"
+        )
+        expected = {
+            "CONFIG_FUJI_BLE_TRANSPORT=y",
+            "CONFIG_BT_ENABLED=y",
+            "CONFIG_BT_NIMBLE_ENABLED=y",
+            "CONFIG_BT_CONTROLLER_ENABLED=y",
+            "CONFIG_BT_NIMBLE_ROLE_CENTRAL=n",
+            "CONFIG_BT_NIMBLE_ROLE_OBSERVER=n",
+            "CONFIG_BT_NIMBLE_SM_LEGACY=n",
+            "CONFIG_BT_NIMBLE_SM_SC=y",
+            "CONFIG_BT_NIMBLE_SM_SC_ONLY=1",
+            "CONFIG_BT_NIMBLE_SM_LVL=3",
+            "CONFIG_BT_NIMBLE_NVS_PERSIST=y",
+            "CONFIG_BT_NIMBLE_MAX_BONDS=2",
+            "CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1",
+        }
+        self.assertTrue(expected.issubset(set(normal["sdkconfig_append"])))
+        for build in board_config["builds"]:
+            if build is normal:
+                continue
+            self.assertFalse(any(
+                option.startswith(("CONFIG_BT_", "CONFIG_FUJI_BLE_TRANSPORT="))
+                for option in build["sdkconfig_append"]
+            ))
+
+        kconfig = (PROJECT_ROOT / "main/Kconfig.projbuild").read_text(encoding="utf-8")
+        ble_gate = kconfig.split("config FUJI_BLE_TRANSPORT", maxsplit=1)[1].split(
+            "config BOARD_HARDWARE_SELF_TEST", maxsplit=1
+        )[0]
+        for diagnostic in (
+            "BOARD_PROBE_ONLY",
+            "BOARD_DISPLAY_TEST_ONLY",
+            "BOARD_MIC_TEST_ONLY",
+            "BOARD_SPEAKER_TEST_ONLY",
+        ):
+            self.assertIn(f"!{diagnostic}", ble_gate)
+
+        cmake = (PROJECT_ROOT / "main/CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn(
+            "CONFIG_FUJI_BLE_TRANSPORT requires the Bluetooth controller and NimBLE host",
+            cmake,
+        )
+
+        transport = (PROJECT_ROOT / "main/fuji_ble/fuji_ble_transport.cc").read_text(
+            encoding="utf-8"
+        )
+        for uuid_tail in (
+            "0x22, 0xbc, 0xa5, 0x0d",
+            "0x20, 0xfc, 0x3f, 0xa7",
+            "0x12, 0xb9, 0x7e, 0xa9",
+            "0xfd, 0xd1, 0xaf, 0xd0",
+        ):
+            self.assertIn(uuid_tail, transport)
+        self.assertIn("BLE_HS_IO_DISPLAY_YESNO", transport)
+        self.assertIn("BLE_GATT_CHR_F_WRITE_AUTHEN", transport)
+        self.assertIn("BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN", transport)
+        self.assertIn("kPairingWindowUs = 120LL * 1000 * 1000", transport)
+        self.assertIn("kMaximumAdvertisingBackoffMs = 60000", transport)
+        self.assertIn("KeepOnlyPeerBond(event->enc_change.conn_handle)", transport)
+        self.assertIn("ble_store_util_delete_peer(&peers[index])", transport)
+
+        board = (BOARD_DIR / "fuji_waveshare_1p46.cc").read_text(encoding="utf-8")
+        self.assertIn("Button>(BOOT_BUTTON_GPIO, false, 2000)", board)
+        self.assertIn("ConfirmPendingComparison()", board)
+        self.assertIn("EnterPairingMode()", board)
+        application = (PROJECT_ROOT / "main/application.cc").read_text(encoding="utf-8")
+        self.assertIn("make_state_snapshot", application)
+        self.assertIn("PublishStateSnapshot()", application)
+        self.assertIn("PAIR %06lu - PRESS BOOT", application)
+
 
 if __name__ == "__main__":
     unittest.main()

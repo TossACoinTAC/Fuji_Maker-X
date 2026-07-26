@@ -7,7 +7,24 @@
             "sdkconfig_append": [
                 "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
                 "CONFIG_SPIRAM=y",
-                "CONFIG_SPIRAM_MODE_OCT=y"
+                "CONFIG_SPIRAM_MODE_OCT=y",
+                "CONFIG_FUJI_BLE_TRANSPORT=y",
+                "CONFIG_BT_ENABLED=y",
+                "CONFIG_BT_NIMBLE_ENABLED=y",
+                "CONFIG_BT_CONTROLLER_ENABLED=y",
+                "CONFIG_BT_NIMBLE_ROLE_CENTRAL=n",
+                "CONFIG_BT_NIMBLE_ROLE_OBSERVER=n",
+                "CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y",
+                "CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y",
+                "CONFIG_BT_NIMBLE_GATT_SERVER=y",
+                "CONFIG_BT_NIMBLE_SECURITY_ENABLE=y",
+                "CONFIG_BT_NIMBLE_SM_LEGACY=n",
+                "CONFIG_BT_NIMBLE_SM_SC=y",
+                "CONFIG_BT_NIMBLE_SM_SC_ONLY=1",
+                "CONFIG_BT_NIMBLE_SM_LVL=3",
+                "CONFIG_BT_NIMBLE_NVS_PERSIST=y",
+                "CONFIG_BT_NIMBLE_MAX_BONDS=2",
+                "CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1"
             ]
         },
         {
